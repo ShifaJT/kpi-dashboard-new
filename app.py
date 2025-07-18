@@ -121,47 +121,47 @@ if time_frame == "Month":
             else:
                 st.error("💡 No medal yet — push forward and grow!")
 
-# === Week Logic ===
-elif time_frame == "Week":
-    emp_id = st.text_input("Enter EMP ID")
-    week_num = st.selectbox("Select Week Number", sorted(day_df['Week'].unique()))
+            # === Previous Month Comparison ===
+            month_order = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+            all_months = [m for m in month_order if m in df['Month'].unique()]
+            current_index = all_months.index(month)
 
-    if emp_id and week_num:
-        week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == week_num)]
-        if not week_data.empty:
-            st.subheader(f"Weekly KPI Data (Week {week_num})")
+            if current_index > 0:
+                previous_month = all_months[current_index - 1]
+                prev_data = df[(df["EMP ID"].astype(str) == emp_id) & (df["Month"] == previous_month)]
 
-            # Call count
-            total_calls = week_data["Call Count"].sum()
+                if not prev_data.empty:
+                    prev_score = prev_data["Grand Total"].values[0]
+                    diff = round(current_score - prev_score, 2)
 
-            # Averages
-            def avg_time(col):
-                return pd.to_timedelta(week_data[col]).mean().components
-
-            aht = pd.to_timedelta(week_data["AHT"]).mean()
-            hold = pd.to_timedelta(week_data["Hold"]).mean()
-            wrap = pd.to_timedelta(week_data["Wrap"]).mean()
-
-            def fmt(t):
-                return str(t).split(" ")[-1].split(".")[0]  # remove days + microsec
-
-            week_metrics = pd.DataFrame({
-                "Metric": ["Call Count", "AHT", "Hold", "Wrap"],
-                "Value": [total_calls, fmt(aht), fmt(hold), fmt(wrap)]
-            })
-            st.dataframe(week_metrics, use_container_width=True)
-
-            # CSAT Scores
-            csat = csat_df[(csat_df["EMP ID"].astype(str) == emp_id) & (csat_df["Week"] == week_num)]
-            if not csat.empty:
-                csat_score = csat[["CSAT Resolution", "CSAT Behaviour"]].T.reset_index()
-                csat_score.columns = ["Type", "Score"]
-                st.subheader("CSAT Scores")
-                st.dataframe(csat_score, use_container_width=True)
+                    if diff > 0:
+                        st.success(f" You improved by +{diff} points since last month ({previous_month})!")
+                    elif diff < 0:
+                        st.warning(f" You dropped by {abs(diff)} points since last month ({previous_month}). Let’s bounce back!")
+                    else:
+                        st.info(f"No change from last month ({previous_month}). Keep the momentum going.")
+                else:
+                    st.info("No data found for previous month.")
             else:
-                st.info("No CSAT data available.")
+                st.info("First month in record — no comparison available.")
 
-# === Day Logic ===
+            # === Target Committed ===
+            st.subheader("Target Committed for Next Month")
+            target_cols = [
+                "Target Committed for PKT",
+                "Target Committed for CSAT (Agent Behaviour)",
+                "Target Committed for Quality"
+            ]
+
+            emp_data.columns = emp_data.columns.str.strip()
+            if all(col in emp_data.columns for col in target_cols):
+                target_table = emp_data[target_cols].T.reset_index()
+                target_table.columns = ["Target Metric", "Target"]
+                st.markdown(target_table.to_html(index=False, classes="styled-table"), unsafe_allow_html=True)
+            else:
+                st.info("No target data available.")
+
+# === Day Logic Fix: Format Time Properly ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
     selected_date = st.selectbox("Select Date", sorted(day_df["Date"].unique()))
@@ -171,11 +171,15 @@ elif time_frame == "Day":
         if not row.empty:
             row = row.iloc[0]
             st.subheader(f"Daily KPI Data - {selected_date}")
+
+            def fmt(t):
+                return str(pd.to_timedelta(t)).split(" ")[-1].split(".")[0]  # HH:MM:SS only
+
             metrics = [
                 ("Call Count", row["Call Count"]),
-                ("AHT", str(pd.to_timedelta(row["AHT"]).components).split(" ")[-1].split(".")[0]),
-                ("Hold", str(pd.to_timedelta(row["Hold"]).components).split(" ")[-1].split(".")[0]),
-                ("Wrap", str(pd.to_timedelta(row["Wrap"]).components).split(" ")[-1].split(".")[0]),
+                ("AHT", fmt(row["AHT"])),
+                ("Hold", fmt(row["Hold"])),
+                ("Wrap", fmt(row["Wrap"])),
                 ("CSAT Resolution", row["CSAT Resolution"]),
                 ("CSAT Behaviour", row["CSAT Behaviour"]),
             ]
