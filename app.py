@@ -51,6 +51,7 @@ def get_target_committed(emp_id, month):
         "Target Committed for Quality": "N/A"
     }
 
+# Get data based on view
 if view_option == "Month":
     selected_month = st.selectbox("Select Month", sorted(df_month['Month'].dropna().unique()))
     data = df_month[(df_month['EMP ID'].astype(str) == emp_id) & (df_month['Month'] == selected_month)]
@@ -91,12 +92,51 @@ elif view_option == "Day":
         st.stop()
     data = filtered_day
 
-# Display data
+# Display Performance Data
 st.subheader("📌 Performance Data")
-st.dataframe(data, use_container_width=True)
+perf_cols = ['Call Count', 'AHT', 'Hold', 'Wrap', 'CSAT Resolution', 'CSAT Behaviour']
+perf_data = data[[col for col in perf_cols if col in data.columns]]
+st.dataframe(perf_data, use_container_width=True)
 
-# Display Targets (only for Monthly view)
+# Display KPI Data (Score based)
+st.subheader("📈 KPI Scores")
+kpi_cols = ['PKT', 'CSAT (Agent Behaviour)', 'Quality', 'Grand Total']
+kpi_data = data[[col for col in kpi_cols if col in data.columns]]
+st.dataframe(kpi_data, use_container_width=True)
+
+# Show comparison (only for monthly view)
 if view_option == "Month" and not data.empty:
+    month_list = sorted(df_month['Month'].dropna().unique())
+    if selected_month in month_list:
+        current_index = month_list.index(selected_month)
+        if current_index > 0:
+            prev_month = month_list[current_index - 1]
+            prev_data = df_month[(df_month['EMP ID'].astype(str) == emp_id) & (df_month['Month'] == prev_month)]
+            st.subheader("📉 Comparison with Previous Month")
+            if not prev_data.empty:
+                compare_df = pd.DataFrame({
+                    'Metric': ['PKT', 'CSAT (Agent Behaviour)', 'Quality', 'Grand Total'],
+                    'Previous Month': [prev_data.get(col, ["N/A"])[0] for col in ['PKT', 'CSAT (Agent Behaviour)', 'Quality', 'Grand Total']],
+                    'Current Month': [data.get(col, ["N/A"])[0] for col in ['PKT', 'CSAT (Agent Behaviour)', 'Quality', 'Grand Total']]
+                })
+                st.dataframe(compare_df, use_container_width=True)
+
+    # Motivational message
+    st.subheader("💡 Motivation")
+    grand_total = data['Grand Total'].values[0] if 'Grand Total' in data.columns else None
+    if grand_total is not None:
+        try:
+            grand_total = float(grand_total)
+            if grand_total >= 90:
+                st.success("Excellent performance! Keep it up! 🌟")
+            elif grand_total >= 75:
+                st.info("Good job! Aim for even higher! 🚀")
+            else:
+                st.warning("Let’s improve next month! You got this! 💪")
+        except:
+            st.info("Keep tracking your progress for motivation!")
+
+    # Display Targets
     st.subheader("🎯 Target Committed")
     targets = get_target_committed(emp_id, selected_month)
     st.write(targets)
