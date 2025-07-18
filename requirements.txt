@@ -1,5 +1,6 @@
 streamlit
-gspread
 pandas
+gspread
 oauth2client
 python-dateutil
+streamlit-lottie
