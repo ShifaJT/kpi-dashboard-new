@@ -12,16 +12,17 @@ SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=SCOPES)
 client = gspread.authorize(creds)
 
-# Load Sheets
-sheet_month = client.open("YTD KPI sheet").worksheet("KPI Month")
+# Spreadsheet ID and tab names
+SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
+sheet_month = client.open_by_key(SHEET_ID).worksheet("KPI Month")
 df_month = pd.DataFrame(sheet_month.get_all_records())
 
-sheet_day = client.open("YTD KPI sheet").worksheet("KPI Day")
+sheet_day = client.open_by_key(SHEET_ID).worksheet("KPI Day")
 df_day = pd.DataFrame(sheet_day.get_all_records())
 df_day['Date'] = pd.to_datetime(df_day['Date'], format='%m/%d/%Y', errors='coerce')
 df_day['Week'] = df_day['Week'].astype(str).str.extract(r'(\d+)').astype(float)
 
-sheet_csat = client.open("YTD KPI sheet").worksheet("CSAT Score")
+sheet_csat = client.open_by_key(SHEET_ID).worksheet("CSAT Score")
 df_csat = pd.DataFrame(sheet_csat.get_all_records())
 df_csat['Week'] = df_csat['Week'].astype(str).str.extract(r'(\d+)').astype(float)
 
@@ -44,16 +45,20 @@ def get_target_committed(emp_id, month):
             "Target Committed for CSAT (Agent Behaviour)": data['Target Committed for CSAT (Agent Behaviour)'].values[0],
             "Target Committed for Quality": data['Target Committed for Quality'].values[0]
         }
-    return {"Target Committed for PKT": "N/A", "Target Committed for CSAT (Agent Behaviour)": "N/A", "Target Committed for Quality": "N/A"}
+    return {
+        "Target Committed for PKT": "N/A",
+        "Target Committed for CSAT (Agent Behaviour)": "N/A",
+        "Target Committed for Quality": "N/A"
+    }
 
 if view_option == "Month":
-    selected_month = st.selectbox("Select Month", sorted(df_month['Month'].unique()))
-    data = df_month[(df_month['EMP ID'] == emp_id) & (df_month['Month'] == selected_month)]
+    selected_month = st.selectbox("Select Month", sorted(df_month['Month'].dropna().unique()))
+    data = df_month[(df_month['EMP ID'].astype(str) == emp_id) & (df_month['Month'] == selected_month)]
 
 elif view_option == "Week":
     selected_week = st.selectbox("Select Week", sorted(df_day['Week'].dropna().unique()))
-    week_data = df_day[(df_day['EMP ID'] == emp_id) & (df_day['Week'] == selected_week)]
-    csat_data = df_csat[(df_csat['EMP ID'] == emp_id) & (df_csat['Week'] == selected_week)]
+    week_data = df_day[(df_day['EMP ID'].astype(str) == emp_id) & (df_day['Week'] == selected_week)]
+    csat_data = df_csat[(df_csat['EMP ID'].astype(str) == emp_id) & (df_csat['Week'] == selected_week)]
 
     if not week_data.empty:
         call_count = week_data['Call Count'].astype(float).sum()
@@ -80,7 +85,7 @@ elif view_option == "Week":
 
 elif view_option == "Day":
     selected_date = st.date_input("Select Date")
-    filtered_day = df_day[(df_day['EMP ID'] == emp_id) & (df_day['Date'] == pd.to_datetime(selected_date))]
+    filtered_day = df_day[(df_day['EMP ID'].astype(str) == emp_id) & (df_day['Date'] == pd.to_datetime(selected_date))]
     if filtered_day.empty:
         st.warning("No data found for selected date.")
         st.stop()
