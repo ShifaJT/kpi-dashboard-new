@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from google.oauth2.service_account import Credentials
-gimport gspread
+import gspread
 
 # Google Sheets access
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
