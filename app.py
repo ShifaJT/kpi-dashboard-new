@@ -49,6 +49,9 @@ st.markdown("""
 # === UI Title ===
 st.title("📊 KPI Dashboard for Champs")
 
+# === Timeframe Filter ===
+time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
+
 # === Input Section ===
 emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
 month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: [
@@ -56,7 +59,7 @@ month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: 
     "July", "August", "September", "October", "November", "December"
 ].index(m)))
 
-# === Display Section ===
+# === Filtered Data ===
 if emp_id and month:
     emp_data = df[(df["EMP ID"].astype(str) == emp_id) & (df["Month"] == month)]
 
@@ -117,7 +120,7 @@ if emp_id and month:
         st.markdown(pd.DataFrame(kpi_table).to_html(index=False, classes="styled-table"), unsafe_allow_html=True)
 
         # === Grand Total ===
-        st.subheader("🏁 Grand Total")
+        st.subheader("🏋️ Grand Total")
         current_score = emp_data['Grand Total'].values[0]
         st.metric("Grand Total KPI", f"{current_score}")
 
