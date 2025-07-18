@@ -5,6 +5,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 from streamlit_lottie import st_lottie
 import requests
+import random
 
 # === CONFIG ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
@@ -111,15 +112,15 @@ if time_frame == "Month":
             if lottie_cheer:
                 st_lottie(lottie_cheer, speed=1, height=200, key="cheer")
 
-            # === Medals ===
-            if current_score >= 4.5:
-                st.success("🏅 Gold Medalist! You're setting the benchmark.")
-            elif current_score >= 4.0:
-                st.info("🥈 Silver Medalist – Great work!")
-            elif current_score >= 3.5:
-                st.warning("🥉 Bronze Medalist – Keep improving!")
-            else:
-                st.error("💡 No medal yet — push forward and grow!")
+            # === Motivational Quote ===
+            quotes = [
+                "Keep going — greatness takes time! 🚀",
+                "Every small step counts. 📈",
+                "Consistency is the secret to success. 🔑",
+                "You're closer than you think. 💪",
+                "Stay focused. Stay sharp. Stay awesome. ✨"
+            ]
+            st.info(random.choice(quotes))
 
             # === Previous Month Comparison ===
             month_order = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -161,7 +162,55 @@ if time_frame == "Month":
             else:
                 st.info("No target data available.")
 
-# === Day Logic Fix: Format Time Properly ===
+elif time_frame == "Week":
+    emp_id = st.text_input("Enter EMP ID")
+    selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
+
+    if emp_id and selected_week:
+        week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
+        csat_data = csat_df[(csat_df["EMP ID"].astype(str) == emp_id) & (csat_df["Week"] == selected_week)]
+
+        if not week_data.empty:
+            st.subheader(f"Weekly KPI Data (Week {selected_week})")
+
+            total_calls = week_data["Call Count"].sum()
+            avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
+            avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
+            avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
+
+            def fmt(td): return str(td).split(" ")[-1].split(".")[0]
+
+            kpi_df = pd.DataFrame([
+                ("Total Calls", total_calls),
+                ("AHT", fmt(avg_aht)),
+                ("Hold", fmt(avg_hold)),
+                ("Wrap", fmt(avg_wrap)),
+            ], columns=["Metric", "Value"])
+            st.dataframe(kpi_df, use_container_width=True)
+
+            if not csat_data.empty:
+                st.subheader("CSAT Scores")
+                csat_df_show = pd.DataFrame([
+                    ("CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
+                    ("CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
+                ], columns=["Type", "Score"])
+                st.dataframe(csat_df_show, use_container_width=True)
+            else:
+                st.info("CSAT data not found for this week.")
+
+            st.markdown("### 💬 Motivational Quote")
+            quotes = [
+                "Keep going — greatness takes time! 🚀",
+                "Every small step counts. 📈",
+                "Consistency is the secret to success. 🔑",
+                "You're closer than you think. 💪",
+                "Stay focused. Stay sharp. Stay awesome. ✨"
+            ]
+            st.info(random.choice(quotes))
+        else:
+            st.warning("No data found for that EMP ID and week.")
+
+# === Day Logic ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
     selected_date = st.selectbox("Select Date", sorted(day_df["Date"].unique()))
