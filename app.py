@@ -73,18 +73,21 @@ if time_frame == "Week" and emp_id:
     else:
         st.markdown(f"### Weekly KPI Data (Week {week_number})")
 
-        # Weekly Call Metrics
         total_calls = week_data["Call Count"].sum()
         avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
         avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
         avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
 
+        def format_timedelta(t):
+            return str(t).split(" ")[-1].split(".")[0] if pd.notnull(t) else "-"
+
         metrics_df = pd.DataFrame([
             {"Metric": "Total Calls", "Value": total_calls},
-            {"Metric": "Average AHT", "Value": str(avg_aht)},
-            {"Metric": "Average Hold", "Value": str(avg_hold)},
-            {"Metric": "Average Wrap", "Value": str(avg_wrap)},
+            {"Metric": "AHT", "Value": format_timedelta(avg_aht)},
+            {"Metric": "Hold", "Value": format_timedelta(avg_hold)},
+            {"Metric": "Wrap", "Value": format_timedelta(avg_wrap)},
         ])
+
         st.markdown(metrics_df.to_html(index=False, classes="styled-table"), unsafe_allow_html=True)
 
         # Weekly CSAT from CSAT Score
@@ -92,7 +95,7 @@ if time_frame == "Week" and emp_id:
 
         if not csat_week.empty:
             csat_row = csat_week.iloc[0]
-            st.subheader("CSAT Scores (From CSAT Score Sheet)")
+            st.subheader("CSAT Scores")
             csat_table = pd.DataFrame([
                 {"Type": "CSAT Resolution", "Score": csat_row["CSAT Resolution"]},
                 {"Type": "CSAT Behaviour", "Score": csat_row["CSAT Behaviour"]}
@@ -101,7 +104,7 @@ if time_frame == "Week" and emp_id:
         else:
             st.info("No CSAT data found for this week.")
 
-# === Month Mode (Existing Flow) ===
+# === Month Mode (unchanged logic) ===
 if time_frame == "Month" and emp_id:
     month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: [
         "January", "February", "March", "April", "May", "June",
@@ -168,7 +171,6 @@ if time_frame == "Month" and emp_id:
         current_score = emp_data['Grand Total'].values[0]
         st.metric("Grand Total KPI", f"{current_score}")
 
-        # Previous Month Comparison
         month_order = [
             "January", "February", "March", "April", "May", "June",
             "July", "August", "September", "October", "November", "December"
@@ -195,7 +197,6 @@ if time_frame == "Month" and emp_id:
         else:
             st.info("First month in record — no comparison available.")
 
-        # Motivational Message
         if current_score >= 4.5:
             st.success(" Outstanding! You're setting the benchmark.")
         elif current_score >= 4.0:
