@@ -4,12 +4,20 @@ import gspread
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 
+# Load Google Sheets using gspread and pandas
+@st.cache_data
+def load_sheet(sheet_id, sheet_name):
+    sh = client.open_by_key(sheet_id)
+    worksheet = sh.worksheet(sheet_name)
+    data = worksheet.get_all_records()
+    return pd.DataFrame(data)
+
 # Google Sheets API setup using secrets.toml
 scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
 creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=scope)
 client = gspread.authorize(creds)
 
-# Load data
+# Load all sheets
 sheet_id = "1kgdq2UwXQ1fIox0_m8_t52Ha7_vOeFucXs5_xMb69Y0"
 month_df = load_sheet(sheet_id, "KPI Month")
 day_df = load_sheet(sheet_id, "KPI Day")
@@ -70,7 +78,7 @@ if emp_id:
         if not week_data.empty:
             st.subheader("Performance Metrics")
             performance = {
-                'Call Count': week_data['Call Count'].sum(),
+                'Call Count': week_data['Call Count'].astype(float).sum(),
                 'AHT': week_data['AHT'].astype(float).mean(),
                 'Hold': week_data['Hold'].astype(float).mean(),
                 'Wrap': week_data['Wrap'].astype(float).mean()
@@ -81,6 +89,8 @@ if emp_id:
             csat_week = csat_data[csat_data['Week'] == selected_week]
             if not csat_week.empty:
                 st.dataframe(csat_week[['CSAT Resolution', 'CSAT Behaviour']])
+            else:
+                st.warning("No CSAT data found for this week.")
 
     elif view_type == "Day":
         emp_data = day_df[day_df['EMP ID'] == emp_id]
@@ -98,5 +108,7 @@ if emp_id:
                 st.subheader("KPI Scores")
                 st.write("CSAT Resolution:", day_data['CSAT Resolution'].values[0])
                 st.write("CSAT Behaviour:", day_data['CSAT Behaviour'].values[0])
+            else:
+                st.warning("No data found for selected date.")
         else:
             st.warning("No valid dates available for the selected employee.")
