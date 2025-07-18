@@ -13,7 +13,7 @@ creds = Credentials.from_service_account_info(st.secrets["google_service_account
 client = gspread.authorize(creds)
 
 # Load Sheets
-sheet_month = client.open("KPI Dashboard").worksheet("KPI Month")
+sheet_month = client.open("YTD KPI Sheet").worksheet("KPI Month")
 df_month = pd.DataFrame(sheet_month.get_all_records())
 
 sheet_day = client.open("KPI Dashboard").worksheet("KPI Day")
