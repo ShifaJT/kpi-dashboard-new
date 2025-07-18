@@ -13,15 +13,15 @@ creds = Credentials.from_service_account_info(st.secrets["google_service_account
 client = gspread.authorize(creds)
 
 # Load Sheets
-sheet_month = client.open("YTD KPI Sheet").worksheet("KPI Month")
+sheet_month = client.open("YTD KPI sheet").worksheet("KPI Month")
 df_month = pd.DataFrame(sheet_month.get_all_records())
 
-sheet_day = client.open("KPI Dashboard").worksheet("KPI Day")
+sheet_day = client.open("YTD KPI sheet").worksheet("KPI Day")
 df_day = pd.DataFrame(sheet_day.get_all_records())
 df_day['Date'] = pd.to_datetime(df_day['Date'], format='%m/%d/%Y', errors='coerce')
 df_day['Week'] = df_day['Week'].astype(str).str.extract(r'(\d+)').astype(float)
 
-sheet_csat = client.open("KPI Dashboard").worksheet("CSAT Score")
+sheet_csat = client.open("YTD KPI sheet").worksheet("CSAT Score")
 df_csat = pd.DataFrame(sheet_csat.get_all_records())
 df_csat['Week'] = df_csat['Week'].astype(str).str.extract(r'(\d+)').astype(float)
 
