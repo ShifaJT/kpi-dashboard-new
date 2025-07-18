@@ -53,13 +53,52 @@ st.title(" KPI Dashboard for Champs")
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
 
-# === Week Mode ===
-if time_frame == "Week" and emp_id:
-    # Load KPI Day sheet
+# === Day Mode ===
+if time_frame == "Day" and emp_id:
     kpi_day_df = pd.DataFrame(client.open_by_key(SHEET_ID).worksheet("KPI Day").get_all_records())
     kpi_day_df.columns = kpi_day_df.columns.str.strip()
+    kpi_day_df["Date"] = pd.to_datetime(kpi_day_df["Date"], dayfirst=False)
 
-    # Load CSAT Score sheet
+    # Filter data for EMP ID
+    emp_day_data = kpi_day_df[kpi_day_df["EMP ID"].astype(str) == emp_id]
+
+    if emp_day_data.empty:
+        st.warning("No daily data found for this EMP ID.")
+    else:
+        available_dates = sorted(emp_day_data["Date"].dt.strftime("%Y-%m-%d").unique())
+        selected_date_str = st.selectbox("Select Date", available_dates)
+        selected_date = pd.to_datetime(selected_date_str)
+
+        selected_row = emp_day_data[emp_day_data["Date"] == selected_date]
+
+        if not selected_row.empty:
+            row = selected_row.iloc[0]
+
+            # Format time fields
+            def format_time(value):
+                try:
+                    return str(pd.to_timedelta(value)).split(" ")[-1].split(".")[0]
+                except:
+                    return value
+
+            data_table = pd.DataFrame([
+                {"Metric": "Call Count", "Value": row["Call Count"]},
+                {"Metric": "AHT", "Value": format_time(row["AHT"])},
+                {"Metric": "Hold", "Value": format_time(row["Hold"])},
+                {"Metric": "Wrap", "Value": format_time(row["Wrap"])},
+                {"Metric": "CSAT Resolution", "Value": row["CSAT Resolution"]},
+                {"Metric": "CSAT Behaviour", "Value": row["CSAT Behaviour"]}
+            ])
+
+            st.markdown(f"### Daily KPI Data - {selected_date.strftime('%d-%b-%Y')}")
+            st.markdown(data_table.to_html(index=False, classes="styled-table"), unsafe_allow_html=True)
+        else:
+            st.info("No data available for selected date.")
+
+# === Week Mode ===
+if time_frame == "Week" and emp_id:
+    kpi_day_df = pd.DataFrame(client.open_by_key(SHEET_ID).worksheet("KPI Day").get_all_records())
+    kpi_day_df.columns = kpi_day_df.columns.str.strip()
     csat_df = pd.DataFrame(client.open_by_key(SHEET_ID).worksheet("CSAT Score").get_all_records())
     csat_df.columns = csat_df.columns.str.strip()
 
@@ -90,7 +129,6 @@ if time_frame == "Week" and emp_id:
 
         st.markdown(metrics_df.to_html(index=False, classes="styled-table"), unsafe_allow_html=True)
 
-        # Weekly CSAT from CSAT Score
         csat_week = csat_df[(csat_df["EMP ID"].astype(str) == emp_id) & (csat_df["Week"] == int(week_number))]
 
         if not csat_week.empty:
@@ -104,7 +142,7 @@ if time_frame == "Week" and emp_id:
         else:
             st.info("No CSAT data found for this week.")
 
-# === Month Mode (unchanged logic) ===
+# === Month Mode ===
 if time_frame == "Month" and emp_id:
     month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: [
         "January", "February", "March", "April", "May", "June",
