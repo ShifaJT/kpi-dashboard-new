@@ -173,7 +173,8 @@ elif time_frame == "Week":
         csat_data = csat_df[(csat_df["EMP ID"].astype(str) == emp_id) & (csat_df["Week"] == selected_week)]
 
         if not week_data.empty:
-            st.subheader(f"Weekly KPI Data (Week {selected_week})")
+            emp_name = week_data["NAME"].iloc[0]
+            st.markdown(f"### Weekly KPI Data for **{emp_name}** | Week {selected_week}")
 
             total_calls = week_data["Call Count"].sum()
             avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
@@ -211,7 +212,6 @@ elif time_frame == "Week":
         else:
             st.warning("No data found for that EMP ID and week.")
 
-# === Day Logic ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
     selected_date = st.selectbox("Select Date", sorted(day_df["Date"].unique()))
@@ -220,7 +220,8 @@ elif time_frame == "Day":
         row = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Date"] == selected_date)]
         if not row.empty:
             row = row.iloc[0]
-            st.subheader(f"Daily KPI Data - {selected_date}")
+            emp_name = row['NAME']
+            st.markdown(f"### Daily KPI Data for **{emp_name}** | Date: {selected_date}")
 
             def fmt(t):
                 return str(pd.to_timedelta(t)).split(" ")[-1].split(".")[0]  # HH:MM:SS only
