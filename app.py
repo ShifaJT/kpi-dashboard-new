@@ -1,22 +1,14 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-# Google Sheets API setup
-scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-client = gspread.authorize(creds)
-
-sheet_id = "1kgdq2UwXQ1fIox0_m8_t52Ha7_vOeFucXs5_xMb69Y0"
-
-# Load data from specific worksheet
+# Google Sheets CSV URL-based loading (no service account needed)
 def load_sheet(sheet_id, sheet_name):
     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
     return pd.read_csv(url)
 
-# Load all sheets
+# Load data
+sheet_id = "1kgdq2UwXQ1fIox0_m8_t52Ha7_vOeFucXs5_xMb69Y0"
 month_df = load_sheet(sheet_id, "KPI Month")
 day_df = load_sheet(sheet_id, "KPI Day")
 csat_df = load_sheet(sheet_id, "CSAT Score")
