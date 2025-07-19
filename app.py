@@ -19,7 +19,7 @@ creds = Credentials.from_service_account_info(st.secrets["google_service_account
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID)
 
-# === Load Lottie ===
+# === Load Lottie Animation ===
 def load_lottie_url(url):
     r = requests.get(url)
     if r.status_code != 200:
@@ -28,7 +28,7 @@ def load_lottie_url(url):
 
 lottie_cheer = load_lottie_url("https://assets2.lottiefiles.com/packages/lf20_snmohqxj.json")
 
-# === Load Data ===
+# === Load Sheets ===
 @st.cache_data
 def load_sheet(name):
     return pd.DataFrame(sheet.worksheet(name).get_all_records())
@@ -37,17 +37,17 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
-# === UI Styling ===
+# === UI Banner ===
 st.markdown("""
     <div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 20px;">
         🚀 KPI Dashboard for Champs
     </div>
 """, unsafe_allow_html=True)
 
-# === Time Filter ===
+# === Timeframe Selector ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
-# === Month Logic ===
+# === MONTH VIEW ===
 if time_frame == "Month":
     df = month_df
     df.columns = df.columns.str.strip()
@@ -145,8 +145,6 @@ if time_frame == "Month":
                         st.info(f"No change from last month ({previous_month}). Keep the momentum going.")
                 else:
                     st.info("No data found for previous month.")
-            else:
-                st.info("First month in record — no comparison available.")
 
             # === Target Committed ===
             st.subheader("Target Committed for Next Month")
@@ -164,8 +162,15 @@ if time_frame == "Month":
             else:
                 st.info("No target data available.")
 
+# === WEEK VIEW ===
 elif time_frame == "Week":
     emp_id = st.text_input("Enter EMP ID")
+
+    # Week fix
+    day_df["Week"] = pd.to_numeric(day_df["Week"], errors="coerce")
+    day_df = day_df.dropna(subset=["Week"])
+    day_df["Week"] = day_df["Week"].astype(int)
+
     selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
 
     if emp_id and selected_week:
@@ -212,6 +217,7 @@ elif time_frame == "Week":
         else:
             st.warning("No data found for that EMP ID and week.")
 
+# === DAY VIEW ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
     selected_date = st.selectbox("Select Date", sorted(day_df["Date"].unique()))
@@ -224,7 +230,7 @@ elif time_frame == "Day":
             st.markdown(f"### Daily KPI Data for **{emp_name}** | Date: {selected_date}")
 
             def fmt(t):
-                return str(pd.to_timedelta(t)).split(" ")[-1].split(".")[0]  # HH:MM:SS only
+                return str(pd.to_timedelta(t)).split(" ")[-1].split(".")[0]
 
             metrics = [
                 ("📞 Call Count", row["Call Count"]),
