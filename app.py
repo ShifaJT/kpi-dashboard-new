@@ -47,48 +47,50 @@ st.markdown("""
 # === Timeframe Selector ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
-# === MONTH VIEW ===
+# === MONTH VIEW ===# === MONTH VIEW ===
 if time_frame == "Month":
     # === Top 5 Champs Banner ===
-st.markdown("## 🏆 Top 5 Champs of the Month")
-monthly_avg = month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
-top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
+    st.markdown("## 🏆 Top 5 Champs of the Month")
+    monthly_avg = month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
+    top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
 
-top_5["Rank"] = top_5.index + 1
-podium_style = """
-<style>
-.podium-container {
-    display: flex;
-    justify-content: space-around;
-    align-items: end;
-    margin-bottom: 30px;
-}
-.podium-item {
-    text-align: center;
-    width: 100px;
-    padding: 10px;
-    color: white;
-    font-weight: bold;
-    border-radius: 8px;
-}
-.first { background: gold; height: 140px; }
-.second { background: silver; height: 120px; }
-.third { background: #cd7f32; height: 100px; }
-.fourth { background: #5D9CEC; height: 90px; }
-.fifth { background: #A569BD; height: 80px; }
-</style>
-<div class="podium-container">
-"""
-for _, row in top_5.iterrows():
-    cls = ["first", "second", "third", "fourth", "fifth"][row["Rank"] - 1]
-    podium_style += f"""
-    <div class="podium-item {cls}">
-        #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"],2)}
-    </div>
+    top_5["Rank"] = top_5.index + 1
+    podium_style = """
+    <style>
+    .podium-container {
+        display: flex;
+        justify-content: space-around;
+        align-items: end;
+        margin-bottom: 30px;
+    }
+    .podium-item {
+        text-align: center;
+        width: 100px;
+        padding: 10px;
+        color: white;
+        font-weight: bold;
+        border-radius: 8px;
+    }
+    .first { background: gold; height: 140px; }
+    .second { background: silver; height: 120px; }
+    .third { background: #cd7f32; height: 100px; }
+    .fourth { background: #5D9CEC; height: 90px; }
+    .fifth { background: #A569BD; height: 80px; }
+    </style>
+    <div class="podium-container">
     """
+    for _, row in top_5.iterrows():
+        cls = ["first", "second", "third", "fourth", "fifth"][row["Rank"] - 1]
+        podium_style += f"""
+        <div class="podium-item {cls}">
+            #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"],2)}
+        </div>
+        """
 
-podium_style += "</div>"
-st.markdown(podium_style, unsafe_allow_html=True)
+    podium_style += "</div>"
+    st.markdown(podium_style, unsafe_allow_html=True)
+
+    # Everything else continues normally...
     df = month_df
     df.columns = df.columns.str.strip()
     emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
