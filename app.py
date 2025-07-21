@@ -53,7 +53,55 @@ if time_frame == "Month":
     df.columns = df.columns.str.strip()
     emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
     month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].index(m)))
+    # 🏆 Top 5 Champs Banner for Month View
+st.markdown("## 🏆 Top 5 Champs This Month")
 
+# Ensure Grand Total is numeric
+kpi_month_df["Grand Total"] = pd.to_numeric(kpi_month_df["Grand Total"], errors="coerce")
+
+# Get top 5 by Grand Total
+monthly_avg = kpi_month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
+top5 = monthly_avg.sort_values(by="Grand Total", ascending=False).head(5).reset_index(drop=True)
+
+# Banner styling
+st.markdown("""
+    <style>
+    .podium-container {
+        display: flex;
+        justify-content: center;
+        gap: 20px;
+        margin-top: 10px;
+        flex-wrap: wrap;
+    }
+    .podium-item {
+        padding: 12px 20px;
+        border-radius: 10px;
+        text-align: center;
+        color: white;
+        font-weight: bold;
+        font-size: 18px;
+        min-width: 120px;
+        box-shadow: 0 0 10px #aaa;
+    }
+    .first { background-color: gold; }
+    .second { background-color: silver; }
+    .third { background-color: #cd7f32; }
+    .fourth { background-color: #4a90e2; }
+    .fifth { background-color: #7b68ee; }
+    </style>
+""", unsafe_allow_html=True)
+
+# Render Top 5
+html = '<div class="podium-container">'
+colors = ["first", "second", "third", "fourth", "fifth"]
+for idx, row in top5.iterrows():
+    html += f'''
+        <div class="podium-item {colors[idx]}">
+            #{idx+1}<br>{row["NAME"]}<br>{round(row["Grand Total"], 2)}
+        </div>
+    '''
+html += '</div>'
+st.markdown(html, unsafe_allow_html=True)
     if emp_id and month:
         emp_data = df[(df["EMP ID"].astype(str) == emp_id) & (df["Month"] == month)]
 
