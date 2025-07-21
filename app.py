@@ -49,11 +49,27 @@ time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
 # === MONTH VIEW ===
 if time_frame == "Month":
-    st.markdown("## 🏆 Top 5 Champs of the Month")
-    monthly_avg = month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean(numeric_only=True).reset_index()
-    top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
+    st.markdown("## 📅 Monthly KPI Dashboard")
 
+    # Select Month from available data
+    month_options = sorted(performance_df["Month"].dropna().unique(), key=lambda m: [
+        "January", "February", "March", "April", "May", "June", "July",
+        "August", "September", "October", "November", "December"
+    ].index(m))
+    month = st.selectbox("Select Month", month_options)
+
+    # Filter data for the selected month
+    month_df = performance_df[performance_df["Month"] == month].copy()
+    kpi_month_df = kpi_df[kpi_df["Month"] == month].copy()
+    month_df["Grand Total"] = pd.to_numeric(month_df["Grand Total"], errors="coerce")
+
+    # === 🏆 Top 5 Champs Banner ===
+    st.markdown("### 🏆 Top 5 Champs of the Month")
+
+    monthly_avg = kpi_month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
+    top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
     top_5["Rank"] = top_5.index + 1
+
     podium_style = """
     <style>
     .podium-container {
@@ -61,6 +77,7 @@ if time_frame == "Month":
         justify-content: space-around;
         align-items: end;
         margin-bottom: 30px;
+        margin-top: 10px;
     }
     .podium-item {
         text-align: center;
@@ -78,25 +95,26 @@ if time_frame == "Month":
     </style>
     <div class="podium-container">
     """
+
     for _, row in top_5.iterrows():
         cls = ["first", "second", "third", "fourth", "fifth"][row["Rank"] - 1]
         podium_style += f"""
         <div class="podium-item {cls}">
-            #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"],2)}
+            #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"], 2)}
         </div>
         """
+
     podium_style += "</div>"
     st.markdown(podium_style, unsafe_allow_html=True)
 
-    # ✅ Now define df here
+    # === Individual EMP ID KPI Details ===
     df = month_df
     df.columns = df.columns.str.strip()
 
     emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
-    # rest of your logic...
 
     if emp_id:
-        emp_data = month_df[(month_df["EMP ID"].astype(str) == str(emp_id))]
+        emp_data = month_df[month_df["EMP ID"].astype(str) == str(emp_id)]
 
         if emp_data.empty:
             st.warning("No data found for that EMP ID and month.")
@@ -151,15 +169,15 @@ if time_frame == "Month":
                 st_lottie(lottie_cheer, speed=1, height=200, key="cheer")
 
             if current_score >= 4.5:
-                st.success(" Incredible! You’re setting new standards!")
+                st.success("Incredible! You’re setting new standards!")
             elif current_score >= 4.0:
-                st.info(" Great work! Let’s aim for the top.")
+                st.info("Great work! Let’s aim for the top.")
             elif current_score >= 3.0:
-                st.warning(" You're doing good! Let's level up next month.")
+                st.warning("You're doing good! Let's level up next month.")
             elif current_score >= 2.0:
-                st.warning(" Progress in motion. Consistency is key!")
+                st.warning("Progress in motion. Consistency is key!")
             else:
-                st.error(" Don't give up. Big wins come from small efforts.")
+                st.error("Don't give up. Big wins come from small efforts.")
 
             # === Previous Month Comparison ===
             month_order = ["January", "February", "March", "April", "May", "June", "July",
@@ -176,9 +194,9 @@ if time_frame == "Month":
                     diff = round(current_score - prev_score, 2)
 
                     if diff > 0:
-                        st.success(f" You improved by +{diff} points since last month ({previous_month})!")
+                        st.success(f"You improved by +{diff} points since last month ({previous_month})!")
                     elif diff < 0:
-                        st.warning(f" You dropped by {abs(diff)} points since last month ({previous_month}). Let’s bounce back!")
+                        st.warning(f"You dropped by {abs(diff)} points since last month ({previous_month}). Let’s bounce back!")
                     else:
                         st.info(f"No change from last month ({previous_month}). Keep the momentum going.")
                 else:
