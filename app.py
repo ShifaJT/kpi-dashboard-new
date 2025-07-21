@@ -47,14 +47,18 @@ st.markdown("""
 # === Timeframe Selector ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
-# === MONTH VIEW ===# === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
-    # === Top 5 Champs Banner ===
     st.markdown("## 🏆 Top 5 Champs of the Month")
+
+    # Ensure Grand Total is numeric
+    month_df["Grand Total"] = pd.to_numeric(month_df["Grand Total"], errors="coerce")
+
+    # Proceed with grouping
     monthly_avg = month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
     top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
-
     top_5["Rank"] = top_5.index + 1
+
     podium_style = """
     <style>
     .podium-container {
@@ -62,6 +66,7 @@ if time_frame == "Month":
         justify-content: space-around;
         align-items: end;
         margin-bottom: 30px;
+        margin-top: 10px;
     }
     .podium-item {
         text-align: center;
@@ -79,18 +84,19 @@ if time_frame == "Month":
     </style>
     <div class="podium-container">
     """
+
     for _, row in top_5.iterrows():
         cls = ["first", "second", "third", "fourth", "fifth"][row["Rank"] - 1]
         podium_style += f"""
         <div class="podium-item {cls}">
-            #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"],2)}
+            #{row["Rank"]}<br>{row["NAME"]}<br>{round(row["Grand Total"], 2)}
         </div>
         """
 
     podium_style += "</div>"
     st.markdown(podium_style, unsafe_allow_html=True)
 
-    # Everything else continues normally...
+    # Rest of your month logic...
     df = month_df
     df.columns = df.columns.str.strip()
     emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
