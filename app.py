@@ -185,15 +185,18 @@ elif time_frame == "Week":
             avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
             avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
             avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
+            avg_auto_on = pd.to_timedelta(week_data["Auto On"]).mean()
 
             def fmt(td): return str(td).split(" ")[-1].split(".")[0]
 
             kpi_df = pd.DataFrame([
-                (" Total Calls", total_calls),
-                (" AHT", fmt(avg_aht)),
-                (" Hold", fmt(avg_hold)),
-                (" Wrap", fmt(avg_wrap)),
-            ], columns=["Metric", "Value"])
+    (" Total Calls", total_calls),
+    (" AHT", fmt(avg_aht)),
+    (" Hold", fmt(avg_hold)),
+    (" Wrap", fmt(avg_wrap)),
+    (" Auto On", fmt(avg_auto_on)),
+], columns=["Metric", "Value"])
+
             st.dataframe(kpi_df, use_container_width=True)
 
             if not csat_data.empty:
@@ -233,13 +236,15 @@ elif time_frame == "Day":
                 return str(pd.to_timedelta(t)).split(" ")[-1].split(".")[0]
 
             metrics = [
-                (" Call Count", row["Call Count"]),
-                (" AHT", fmt(row["AHT"])),
-                (" Hold", fmt(row["Hold"])),
-                (" Wrap", fmt(row["Wrap"])),
-                (" CSAT Resolution", row["CSAT Resolution"]),
-                (" CSAT Behaviour", row["CSAT Behaviour"]),
-            ]
+    (" Call Count", row["Call Count"]),
+    (" AHT", fmt(row["AHT"])),
+    (" Hold", fmt(row["Hold"])),
+    (" Wrap", fmt(row["Wrap"])),
+    (" Auto On", fmt(row["Auto On"])),
+    (" CSAT Resolution", row["CSAT Resolution"]),
+    (" CSAT Behaviour", row["CSAT Behaviour"]),
+]
+
             daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
             st.dataframe(daily_df, use_container_width=True)
         else:
