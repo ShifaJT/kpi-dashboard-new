@@ -195,8 +195,8 @@ elif time_frame == "Week":
             if not csat_data.empty:
                 st.subheader("CSAT Scores")
                 csat_df_show = pd.DataFrame([
-                    (" CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
-                    (" CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
+                    ("💬 CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
+                    ("😊 CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
                 ], columns=["Type", "Score"])
                 st.dataframe(csat_df_show, use_container_width=True)
             else:
