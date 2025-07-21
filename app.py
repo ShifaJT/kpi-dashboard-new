@@ -48,13 +48,26 @@ st.markdown("""
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
 # === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
-    st.markdown("## 🏆 Top 5 Champs of the Month")
+    df.columns = df.columns.str.strip()
 
-    # Ensure Grand Total is numeric
+    # Select Month first
+    month = st.selectbox(
+        "Select Month",
+        sorted(df['Month'].dropna().unique(), key=lambda m: [
+            "January", "February", "March", "April", "May", "June",
+            "July", "August", "September", "October", "November", "December"
+        ])
+    )
+
+    # Filter data for selected month
+    month_df = df[df["Month"] == month].copy()
     month_df["Grand Total"] = pd.to_numeric(month_df["Grand Total"], errors="coerce")
 
-    # Proceed with grouping
+    # === 🏆 Top 5 Champs of the Month Banner ===
+    st.markdown("## 🏆 Top 5 Champs of the Month")
+
     monthly_avg = month_df.groupby(["EMP ID", "NAME"])["Grand Total"].mean().reset_index()
     top_5 = monthly_avg.sort_values("Grand Total", ascending=False).head(5).reset_index(drop=True)
     top_5["Rank"] = top_5.index + 1
@@ -96,14 +109,11 @@ if time_frame == "Month":
     podium_style += "</div>"
     st.markdown(podium_style, unsafe_allow_html=True)
 
-    # Rest of your month logic...
-    df = month_df
-    df.columns = df.columns.str.strip()
+    # === Input: EMP ID ===
     emp_id = st.text_input("Enter EMP ID (e.g., 1070)")
-    month = st.selectbox("Select Month", sorted(df['Month'].unique(), key=lambda m: ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"].index(m)))
 
-    if emp_id and month:
-        emp_data = df[(df["EMP ID"].astype(str) == emp_id) & (df["Month"] == month)]
+    if emp_id:
+        emp_data = month_df[(month_df["EMP ID"].astype(str) == str(emp_id))]
 
         if emp_data.empty:
             st.warning("No data found for that EMP ID and month.")
@@ -168,7 +178,9 @@ if time_frame == "Month":
             else:
                 st.error(" Don't give up. Big wins come from small efforts.")
 
-            month_order = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+            # === Previous Month Comparison ===
+            month_order = ["January", "February", "March", "April", "May", "June", "July",
+                           "August", "September", "October", "November", "December"]
             all_months = [m for m in month_order if m in df['Month'].unique()]
             current_index = all_months.index(month)
 
