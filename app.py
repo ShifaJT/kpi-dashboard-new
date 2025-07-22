@@ -1,4 +1,4 @@
-# === app.py (Fixed Complete Version) ===
+# === app.py (Final Corrected Version) ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -122,7 +122,7 @@ try:
         
         # Convert seconds back to HH:MM:SS for display
         def sec_to_time(seconds):
-            return str(timedelta(seconds=round(seconds))
+            return str(timedelta(seconds=round(seconds)))
         
         top_5['AHT'] = top_5['AHT_sec'].apply(sec_to_time)
         top_5['Wrap'] = top_5['Wrap_sec'].apply(sec_to_time)
@@ -156,10 +156,9 @@ try:
 except Exception as e:
     st.warning(f"Couldn't load top performers: {str(e)}")
 
-# === Timeframe Selector ===
+# === Rest of your original code remains exactly the same ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
 
-# === MONTH VIEW ===
 if time_frame == "Month":
     df = month_df
     df.columns = df.columns.str.strip()
@@ -268,7 +267,6 @@ if time_frame == "Month":
             else:
                 st.info("No target data available.")
 
-# === WEEK VIEW ===
 elif time_frame == "Week":
     emp_id = st.text_input("Enter EMP ID")
 
@@ -325,7 +323,6 @@ elif time_frame == "Week":
         else:
             st.warning("No data found for that EMP ID and week.")
 
-# === DAY VIEW ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
     selected_date = st.selectbox("Select Date", sorted(day_df["Date"].unique()))
