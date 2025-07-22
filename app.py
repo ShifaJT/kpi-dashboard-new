@@ -6,6 +6,7 @@ from google.oauth2.service_account import Credentials
 from streamlit_lottie import st_lottie
 import requests
 import random
+from datetime import datetime
 
 # === CONFIG ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
@@ -43,6 +44,57 @@ st.markdown("""
         KPI Dashboard for Champs
     </div>
 """, unsafe_allow_html=True)
+
+# === Top Performers Section ===
+current_week = datetime.now().isocalendar()[1]
+weekly_metrics = day_df[day_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
+    'AHT': 'mean',
+    'Wrap': 'mean',
+    'Hold': 'mean',
+    'Auto On': 'mean'
+}).reset_index()
+
+weekly_csat = csat_df[csat_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
+    'CSAT Resolution': 'mean',
+    'CSAT Behaviour': 'mean'
+}).reset_index()
+
+if not weekly_metrics.empty and not weekly_csat.empty:
+    top_data = pd.merge(weekly_metrics, weekly_csat, on=['EMP ID', 'NAME'], how='left')
+    top_data['Score'] = (
+        (1/top_data['AHT'].clip(lower=1e-6)) +  # Avoid division by zero
+        (1/top_data['Wrap'].clip(lower=1e-6)) +
+        (1/top_data['Hold'].clip(lower=1e-6)) +
+        top_data['Auto On'] +
+        top_data['CSAT Resolution'].fillna(0) +
+        top_data['CSAT Behaviour'].fillna(0)
+    )
+    
+    top_5 = top_data.nlargest(5, 'Score')
+    
+    # Format the display
+    def format_timedelta(x):
+        return str(pd.to_timedelta(x)).split(" ")[-1].split(".")[0]
+    
+    top_5_display = top_5[['NAME', 'AHT', 'Wrap', 'Hold', 'Auto On', 'CSAT Resolution', 'CSAT Behaviour']]
+    top_5_display.columns = ['Agent', '⏱️ AHT', '📝 Wrap', '🎧 Hold', '🔄 Auto-On', '💬 CSAT Res', '😊 CSAT Beh']
+    
+    st.markdown("### 🏆 Current Week Top Performers")
+    st.dataframe(
+        top_5_display.style
+        .format({
+            '⏱️ AHT': format_timedelta,
+            '📝 Wrap': format_timedelta,
+            '🎧 Hold': format_timedelta,
+            '🔄 Auto-On': format_timedelta,
+            '💬 CSAT Res': '{:.1f}%',
+            '😊 CSAT Beh': '{:.1f}%'
+        }),
+        height=182,
+        use_container_width=True
+    )
+else:
+    st.info("No top performers data available for current week yet")
 
 # === Timeframe Selector ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
@@ -110,9 +162,9 @@ if time_frame == "Month":
                 st_lottie(lottie_cheer, speed=1, height=200, key="cheer")
 
             if current_score >= 4.5:
-                st.success(" Incredible! You’re setting new standards!")
+                st.success(" Incredible! You're setting new standards!")
             elif current_score >= 4.0:
-                st.info(" Great work! Let’s aim for the top.")
+                st.info(" Great work! Let's aim for the top.")
             elif current_score >= 3.0:
                 st.warning(" You're doing good! Let's level up next month.")
             elif current_score >= 2.0:
@@ -135,7 +187,7 @@ if time_frame == "Month":
                     if diff > 0:
                         st.success(f" You improved by +{diff} points since last month ({previous_month})!")
                     elif diff < 0:
-                        st.warning(f" You dropped by {abs(diff)} points since last month ({previous_month}). Let’s bounce back!")
+                        st.warning(f" You dropped by {abs(diff)} points since last month ({previous_month}). Let's bounce back!")
                     else:
                         st.info(f"No change from last month ({previous_month}). Keep the momentum going.")
                 else:
@@ -184,10 +236,10 @@ elif time_frame == "Week":
 
             kpi_df = pd.DataFrame([
                 ("📞 Total Calls", total_calls),
-("⏱️ AHT", fmt(avg_aht)),
-("🎧 Hold", fmt(avg_hold)),
-("📝 Wrap", fmt(avg_wrap)),
-("🔄 Avg Auto On", fmt(avg_auto_on)),
+                ("⏱️ AHT", fmt(avg_aht)),
+                ("🎧 Hold", fmt(avg_hold)),
+                ("📝 Wrap", fmt(avg_wrap)),
+                ("🔄 Avg Auto On", fmt(avg_auto_on)),
             ], columns=["Metric", "Value"])
 
             st.dataframe(kpi_df, use_container_width=True)
@@ -206,7 +258,7 @@ elif time_frame == "Week":
                 " Keep up the momentum and aim higher!",
                 " Greatness is built on good habits.",
                 " Stay consistent — growth follows.",
-                " You’ve got the spark — now fire up more!",
+                " You've got the spark — now fire up more!",
                 " Progress is progress, no matter how small."
             ]
             st.info(random.choice(quotes))
@@ -230,12 +282,12 @@ elif time_frame == "Day":
 
             metrics = [
                 ("📞 Call Count", row["Call Count"]),
-("⏱️ AHT", fmt(row["AHT"])),
-("🎧 Hold", fmt(row["Hold"])),
-("📝 Wrap", fmt(row["Wrap"])),
-("🔄 Auto On", fmt(row["Auto On"])),
-("💬 CSAT Resolution", row["CSAT Resolution"]),
-("😊 CSAT Behaviour", row["CSAT Behaviour"]),
+                ("⏱️ AHT", fmt(row["AHT"])),
+                ("🎧 Hold", fmt(row["Hold"])),
+                ("📝 Wrap", fmt(row["Wrap"])),
+                ("🔄 Auto On", fmt(row["Auto On"])),
+                ("💬 CSAT Resolution", row["CSAT Resolution"]),
+                ("😊 CSAT Behaviour", row["CSAT Behaviour"]),
             ]
 
             daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
