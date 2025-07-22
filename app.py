@@ -38,6 +38,17 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
+# === Convert time strings to timedelta for KPI Day ===
+def convert_time_columns(df):
+    time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
+    for col in time_cols:
+        if col in df.columns:
+            # Convert to string first in case some values are already timedeltas
+            df[col] = pd.to_timedelta(df[col].astype(str))
+    return df
+
+day_df = convert_time_columns(day_df)
+
 # === UI Banner ===
 st.markdown("""
     <div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 20px;">
@@ -47,54 +58,77 @@ st.markdown("""
 
 # === Top Performers Section ===
 current_week = datetime.now().isocalendar()[1]
-weekly_metrics = day_df[day_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
-    'AHT': 'mean',
-    'Wrap': 'mean',
-    'Hold': 'mean',
-    'Auto On': 'mean'
-}).reset_index()
 
-weekly_csat = csat_df[csat_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
-    'CSAT Resolution': 'mean',
-    'CSAT Behaviour': 'mean'
-}).reset_index()
-
-if not weekly_metrics.empty and not weekly_csat.empty:
-    top_data = pd.merge(weekly_metrics, weekly_csat, on=['EMP ID', 'NAME'], how='left')
-    top_data['Score'] = (
-        (1/top_data['AHT'].clip(lower=1e-6)) +  # Avoid division by zero
-        (1/top_data['Wrap'].clip(lower=1e-6)) +
-        (1/top_data['Hold'].clip(lower=1e-6)) +
-        top_data['Auto On'] +
-        top_data['CSAT Resolution'].fillna(0) +
-        top_data['CSAT Behaviour'].fillna(0)
-    )
+try:
+    # Filter for current week and convert Week to string for comparison
+    current_week_data = day_df[day_df['Week'].astype(str) == str(current_week)].copy()
     
-    top_5 = top_data.nlargest(5, 'Score')
-    
-    # Format the display
-    def format_timedelta(x):
-        return str(pd.to_timedelta(x)).split(" ")[-1].split(".")[0]
-    
-    top_5_display = top_5[['NAME', 'AHT', 'Wrap', 'Hold', 'Auto On', 'CSAT Resolution', 'CSAT Behaviour']]
-    top_5_display.columns = ['Agent', '⏱️ AHT', '📝 Wrap', '🎧 Hold', '🔄 Auto-On', '💬 CSAT Res', '😊 CSAT Beh']
-    
-    st.markdown("### 🏆 Current Week Top Performers")
-    st.dataframe(
-        top_5_display.style
-        .format({
-            '⏱️ AHT': format_timedelta,
-            '📝 Wrap': format_timedelta,
-            '🎧 Hold': format_timedelta,
-            '🔄 Auto-On': format_timedelta,
-            '💬 CSAT Res': '{:.1f}%',
-            '😊 CSAT Beh': '{:.1f}%'
-        }),
-        height=182,
-        use_container_width=True
-    )
-else:
-    st.info("No top performers data available for current week yet")
+    if not current_week_data.empty:
+        # Calculate mean of timedelta columns
+        weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME']).agg({
+            'AHT': 'mean',
+            'Wrap': 'mean',
+            'Hold': 'mean',
+            'Auto On': 'mean'
+        }).reset_index()
+        
+        # Get CSAT data for current week
+        weekly_csat = csat_df[csat_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
+            'CSAT Resolution': 'mean',
+            'CSAT Behaviour': 'mean'
+        }).reset_index()
+        
+        # Merge metrics and CSAT
+        if not weekly_csat.empty:
+            top_data = pd.merge(weekly_metrics, weekly_csat, on=['EMP ID', 'NAME'], how='left')
+        else:
+            top_data = weekly_metrics.copy()
+            top_data['CSAT Resolution'] = 0
+            top_data['CSAT Behaviour'] = 0
+        
+        # Calculate composite score
+        top_data['Score'] = (
+            (1/top_data['AHT'].dt.total_seconds().clip(lower=1)) +  # Convert to seconds
+            (1/top_data['Wrap'].dt.total_seconds().clip(lower=1)) +
+            (1/top_data['Hold'].dt.total_seconds().clip(lower=1)) +
+            top_data['Auto On'].dt.total_seconds() +
+            top_data['CSAT Resolution'].fillna(0) +
+            top_data['CSAT Behaviour'].fillna(0)
+        )
+        
+        # Get top 5 performers
+        top_5 = top_data.nlargest(5, 'Score')
+        
+        # Format display
+        def format_timedelta(x):
+            if pd.isna(x):
+                return "00:00:00"
+            total_seconds = x.total_seconds()
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            seconds = int(total_seconds % 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        top_5_display = top_5[['NAME', 'AHT', 'Wrap', 'Hold', 'Auto On', 'CSAT Resolution', 'CSAT Behaviour']].copy()
+        top_5_display.columns = ['Agent', '⏱️ AHT', '📝 Wrap', '🎧 Hold', '🔄 Auto-On', '💬 CSAT Res', '😊 CSAT Beh']
+        
+        # Apply formatting
+        for col in ['⏱️ AHT', '📝 Wrap', '🎧 Hold', '🔄 Auto-On']:
+            top_5_display[col] = top_5_display[col].apply(format_timedelta)
+        
+        for col in ['💬 CSAT Res', '😊 CSAT Beh']:
+            top_5_display[col] = top_5_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "0.0%")
+        
+        st.markdown("### 🏆 Current Week Top Performers")
+        st.dataframe(
+            top_5_display,
+            height=182,
+            use_container_width=True
+        )
+    else:
+        st.info("No data available for current week yet")
+except Exception as e:
+    st.warning(f"Couldn't load top performers: {str(e)}")
 
 # === Timeframe Selector ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
