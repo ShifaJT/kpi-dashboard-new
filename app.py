@@ -1,5 +1,4 @@
-
-# === app.py (Final Working Version) ===
+# === app.py (Fully Fixed Version) ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -41,10 +40,10 @@ day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
 # === Robust Time Conversion ===
-def convert_to_timedelta(time_str):
-    """Convert various time formats to timedelta"""
+def convert_to_seconds(time_str):
+    """Convert time strings to total seconds"""
     if pd.isna(time_str) or time_str in ['', '0', 0]:
-        return pd.Timedelta(0)
+        return 0
     
     # Handle HH:MM:SS format
     if isinstance(time_str, str) and ':' in time_str:
@@ -52,24 +51,24 @@ def convert_to_timedelta(time_str):
         try:
             if len(parts) == 3:  # HH:MM:SS
                 h, m, s = map(float, parts)
-                return pd.Timedelta(hours=h, minutes=m, seconds=s)
+                return h * 3600 + m * 60 + s
             elif len(parts) == 2:  # MM:SS
                 m, s = map(float, parts)
-                return pd.Timedelta(minutes=m, seconds=s)
+                return m * 60 + s
         except:
-            return pd.Timedelta(0)
+            return 0
     
     # Handle numeric seconds
     try:
-        return pd.Timedelta(seconds=float(time_str))
+        return float(time_str)
     except:
-        return pd.Timedelta(0)
+        return 0
 
-# Convert time columns to timedelta
+# Convert time columns to seconds
 time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_cols:
     if col in day_df.columns:
-        day_df[col] = day_df[col].apply(convert_to_timedelta)
+        day_df[f"{col}_sec"] = day_df[col].apply(convert_to_seconds)
 
 # === UI Banner ===
 st.markdown("""
@@ -86,12 +85,12 @@ try:
     current_week_data = day_df[day_df['Week'].astype(str) == str(current_week)].copy()
     
     if not current_week_data.empty:
-        # Calculate mean durations (works with timedelta)
+        # Calculate mean in seconds (numeric operation)
         weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME']).agg({
-            'AHT': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
-            'Wrap': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
-            'Hold': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
-            'Auto On': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s')
+            'AHT_sec': 'mean',
+            'Wrap_sec': 'mean',
+            'Hold_sec': 'mean',
+            'Auto On_sec': 'mean'
         }).reset_index()
         
         # Get CSAT data
@@ -101,20 +100,19 @@ try:
         }).reset_index()
         
         # Merge data
-        if not weekly_csat.empty:
-            top_data = pd.merge(weekly_metrics, weekly_csat, on=['EMP ID', 'NAME'], how='left')
-            top_data[['CSAT Resolution', 'CSAT Behaviour']] = top_data[['CSAT Resolution', 'CSAT Behaviour']].fillna(0)
-        else:
-            top_data = weekly_metrics.copy()
-            top_data['CSAT Resolution'] = 0
-            top_data['CSAT Behaviour'] = 0
+        top_data = pd.merge(
+            weekly_metrics, 
+            weekly_csat, 
+            on=['EMP ID', 'NAME'], 
+            how='left'
+        ).fillna(0)
         
-        # Calculate composite score using seconds
+        # Calculate composite score
         top_data['Score'] = (
-            (1/top_data['AHT'].dt.total_seconds().clip(lower=1)) +  # Lower AHT is better
-            (1/top_data['Wrap'].dt.total_seconds().clip(lower=1)) +  # Lower Wrap is better
-            (1/top_data['Hold'].dt.total_seconds().clip(lower=1)) +  # Lower Hold is better
-            top_data['Auto On'].dt.total_seconds() +  # Higher Auto-On is better
+            (1/top_data['AHT_sec'].clip(lower=1)) +  # Lower AHT is better
+            (1/top_data['Wrap_sec'].clip(lower=1)) +  # Lower Wrap is better
+            (1/top_data['Hold_sec'].clip(lower=1)) +  # Lower Hold is better
+            top_data['Auto On_sec'] +  # Higher Auto-On is better
             top_data['CSAT Resolution'] +  # Higher CSAT is better
             top_data['CSAT Behaviour']    # Higher CSAT is better
         )
@@ -122,36 +120,24 @@ try:
         # Get top 5
         top_5 = top_data.nlargest(5, 'Score').copy()
         
+        # Convert seconds back to HH:MM:SS for display
+        def sec_to_time(seconds):
+            return str(timedelta(seconds=round(seconds)))
+        
         # Format display
-        def format_timedelta(td):
-            total_seconds = td.total_seconds()
-            hours = int(total_seconds // 3600)
-            minutes = int((total_seconds % 3600) // 60)
-            seconds = int(total_seconds % 60)
-            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
-        
-        display_cols = {
-            'NAME': 'Agent',
-            'AHT': '⏱️ AHT',
-            'Wrap': '📝 Wrap',
-            'Hold': '🎧 Hold',
-            'Auto On': '🔄 Auto-On',
-            'CSAT Resolution': '💬 CSAT Res',
-            'CSAT Behaviour': '😊 CSAT Beh'
+        display_data = {
+            'Agent': top_5['NAME'],
+            '⏱️ AHT': top_5['AHT_sec'].apply(sec_to_time),
+            '📝 Wrap': top_5['Wrap_sec'].apply(sec_to_time),
+            '🎧 Hold': top_5['Hold_sec'].apply(sec_to_time),
+            '🔄 Auto-On': top_5['Auto On_sec'].apply(sec_to_time),
+            '💬 CSAT Res': top_5['CSAT Resolution'].apply(lambda x: f"{x:.1f}%"),
+            '😊 CSAT Beh': top_5['CSAT Behaviour'].apply(lambda x: f"{x:.1f}%")
         }
-        
-        # Apply formatting
-        top_5_display = top_5[list(display_cols.keys())].copy()
-        for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
-            top_5_display[col] = top_5_display[col].apply(format_timedelta)
         
         st.markdown("### 🏆 Current Week Top Performers")
         st.dataframe(
-            top_5_display.rename(columns=display_cols)
-            .style.format({
-                '💬 CSAT Res': '{:.1f}%',
-                '😊 CSAT Beh': '{:.1f}%'
-            }),
+            pd.DataFrame(display_data),
             height=182,
             use_container_width=True
         )
