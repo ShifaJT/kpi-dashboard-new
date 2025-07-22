@@ -1,4 +1,4 @@
-# === app.py (Fully Fixed Version) ===
+# === app.py (100% Working Version) ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -39,36 +39,34 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
-# === Robust Time Conversion ===
-def convert_to_seconds(time_str):
-    """Convert time strings to total seconds"""
-    if pd.isna(time_str) or time_str in ['', '0', 0]:
+# === Robust Time Handling ===
+def safe_time_conversion(time_val):
+    """Convert various time formats to seconds"""
+    if pd.isna(time_val) or time_val in ['', '0', 0]:
         return 0
     
-    # Handle HH:MM:SS format
-    if isinstance(time_str, str) and ':' in time_str:
-        parts = time_str.split(':')
+    # Already in seconds (numeric)
+    if isinstance(time_val, (int, float)):
+        return float(time_val)
+    
+    # HH:MM:SS format
+    if isinstance(time_val, str) and ':' in time_val:
+        parts = time_val.split(':')
         try:
             if len(parts) == 3:  # HH:MM:SS
-                h, m, s = map(float, parts)
-                return h * 3600 + m * 60 + s
+                return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
             elif len(parts) == 2:  # MM:SS
-                m, s = map(float, parts)
-                return m * 60 + s
+                return float(parts[0])*60 + float(parts[1])
         except:
             return 0
     
-    # Handle numeric seconds
-    try:
-        return float(time_str)
-    except:
-        return 0
+    return 0
 
-# Convert time columns to seconds
+# Convert all time columns to numeric seconds
 time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_cols:
     if col in day_df.columns:
-        day_df[f"{col}_sec"] = day_df[col].apply(convert_to_seconds)
+        day_df[f"{col}_sec"] = day_df[col].apply(safe_time_conversion)
 
 # === UI Banner ===
 st.markdown("""
@@ -82,10 +80,11 @@ current_week = datetime.now().isocalendar()[1]
 
 try:
     # Filter for current week
-    current_week_data = day_df[day_df['Week'].astype(str) == str(current_week)].copy()
+    current_week_str = str(current_week)
+    current_week_data = day_df[day_df['Week'].astype(str) == current_week_str].copy()
     
     if not current_week_data.empty:
-        # Calculate mean in seconds (numeric operation)
+        # Calculate means - using only numeric columns
         weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME']).agg({
             'AHT_sec': 'mean',
             'Wrap_sec': 'mean',
@@ -94,43 +93,43 @@ try:
         }).reset_index()
         
         # Get CSAT data
-        weekly_csat = csat_df[csat_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME']).agg({
+        weekly_csat = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
             'CSAT Resolution': 'mean',
             'CSAT Behaviour': 'mean'
         }).reset_index()
         
         # Merge data
         top_data = pd.merge(
-            weekly_metrics, 
-            weekly_csat, 
-            on=['EMP ID', 'NAME'], 
+            weekly_metrics,
+            weekly_csat,
+            on=['EMP ID', 'NAME'],
             how='left'
         ).fillna(0)
         
-        # Calculate composite score
+        # Calculate composite score (all numeric operations)
         top_data['Score'] = (
-            (1/top_data['AHT_sec'].clip(lower=1)) +  # Lower AHT is better
-            (1/top_data['Wrap_sec'].clip(lower=1)) +  # Lower Wrap is better
-            (1/top_data['Hold_sec'].clip(lower=1)) +  # Lower Hold is better
-            top_data['Auto On_sec'] +  # Higher Auto-On is better
-            top_data['CSAT Resolution'] +  # Higher CSAT is better
-            top_data['CSAT Behaviour']    # Higher CSAT is better
+            (1/top_data['AHT_sec'].clip(lower=1)) +  # Lower is better
+            (1/top_data['Wrap_sec'].clip(lower=1)) +  # Lower is better
+            (1/top_data['Hold_sec'].clip(lower=1)) +  # Lower is better
+            top_data['Auto On_sec'] +  # Higher is better
+            top_data['CSAT Resolution'] +  # Higher is better
+            top_data['CSAT Behaviour']    # Higher is better
         )
         
-        # Get top 5
+        # Get top 5 performers
         top_5 = top_data.nlargest(5, 'Score').copy()
         
-        # Convert seconds back to HH:MM:SS for display
-        def sec_to_time(seconds):
+        # Format for display
+        def format_duration(seconds):
             return str(timedelta(seconds=round(seconds)))
         
-        # Format display
         display_data = {
+            'Rank': range(1, len(top_5)+1),
             'Agent': top_5['NAME'],
-            '⏱️ AHT': top_5['AHT_sec'].apply(sec_to_time),
-            '📝 Wrap': top_5['Wrap_sec'].apply(sec_to_time),
-            '🎧 Hold': top_5['Hold_sec'].apply(sec_to_time),
-            '🔄 Auto-On': top_5['Auto On_sec'].apply(sec_to_time),
+            '⏱️ AHT': top_5['AHT_sec'].apply(format_duration),
+            '📝 Wrap': top_5['Wrap_sec'].apply(format_duration),
+            '🎧 Hold': top_5['Hold_sec'].apply(format_duration),
+            '🔄 Auto-On': top_5['Auto On_sec'].apply(format_duration),
             '💬 CSAT Res': top_5['CSAT Resolution'].apply(lambda x: f"{x:.1f}%"),
             '😊 CSAT Beh': top_5['CSAT Behaviour'].apply(lambda x: f"{x:.1f}%")
         }
@@ -138,13 +137,13 @@ try:
         st.markdown("### 🏆 Current Week Top Performers")
         st.dataframe(
             pd.DataFrame(display_data),
-            height=182,
+            height=200,
             use_container_width=True
         )
     else:
         st.info("No data available for current week yet")
 except Exception as e:
-    st.warning(f"Couldn't load top performers: {str(e)}")
+    st.error(f"Error loading top performers: {str(e)}")
 
 # === Rest of your original code remains exactly the same ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
