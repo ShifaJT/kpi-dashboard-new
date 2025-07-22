@@ -1,4 +1,4 @@
-# === app.py (100% Working Version) ===
+# === app.py (Final Working Version) ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -7,7 +7,6 @@ from streamlit_lottie import st_lottie
 import requests
 import random
 from datetime import datetime, timedelta
-import numpy as np
 
 # === CONFIG ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
@@ -39,17 +38,13 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
-# === Robust Time Handling ===
-def safe_time_conversion(time_val):
-    """Convert various time formats to seconds"""
+# === Robust Time Conversion ===
+def convert_to_seconds(time_val):
+    """Convert various time formats to total seconds"""
     if pd.isna(time_val) or time_val in ['', '0', 0]:
-        return 0
+        return 0.0
     
-    # Already in seconds (numeric)
-    if isinstance(time_val, (int, float)):
-        return float(time_val)
-    
-    # HH:MM:SS format
+    # Handle HH:MM:SS format
     if isinstance(time_val, str) and ':' in time_val:
         parts = time_val.split(':')
         try:
@@ -57,16 +52,20 @@ def safe_time_conversion(time_val):
                 return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
             elif len(parts) == 2:  # MM:SS
                 return float(parts[0])*60 + float(parts[1])
-        except:
-            return 0
+        except (ValueError, TypeError):
+            return 0.0
     
-    return 0
+    # Handle numeric values
+    try:
+        return float(time_val)
+    except (ValueError, TypeError):
+        return 0.0
 
-# Convert all time columns to numeric seconds
+# Create new columns with time in seconds
 time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_cols:
     if col in day_df.columns:
-        day_df[f"{col}_sec"] = day_df[col].apply(safe_time_conversion)
+        day_df[f"{col}_sec"] = day_df[col].apply(convert_to_seconds)
 
 # === UI Banner ===
 st.markdown("""
@@ -80,23 +79,22 @@ current_week = datetime.now().isocalendar()[1]
 
 try:
     # Filter for current week
-    current_week_str = str(current_week)
-    current_week_data = day_df[day_df['Week'].astype(str) == current_week_str].copy()
+    current_week_data = day_df[day_df['Week'].astype(str) == str(current_week)].copy()
     
     if not current_week_data.empty:
-        # Calculate means - using only numeric columns
-        weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME']).agg({
+        # Calculate means using only numeric columns
+        weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
             'AHT_sec': 'mean',
             'Wrap_sec': 'mean',
             'Hold_sec': 'mean',
             'Auto On_sec': 'mean'
-        }).reset_index()
+        })
         
         # Get CSAT data
-        weekly_csat = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
+        weekly_csat = csat_df[csat_df['Week'].astype(str) == str(current_week)].groupby(['EMP ID', 'NAME'], as_index=False).agg({
             'CSAT Resolution': 'mean',
             'CSAT Behaviour': 'mean'
-        }).reset_index()
+        })
         
         # Merge data
         top_data = pd.merge(
@@ -106,7 +104,7 @@ try:
             how='left'
         ).fillna(0)
         
-        # Calculate composite score (all numeric operations)
+        # Calculate composite score
         top_data['Score'] = (
             (1/top_data['AHT_sec'].clip(lower=1)) +  # Lower is better
             (1/top_data['Wrap_sec'].clip(lower=1)) +  # Lower is better
