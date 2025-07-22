@@ -1,3 +1,4 @@
+# === COMPLETE KPI DASHBOARD SOLUTION ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -8,26 +9,26 @@ import requests
 import random
 from datetime import datetime, timedelta
 
-# Configuration
+# === CONFIGURATION ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
 SHEET_MONTH = "KPI Month"
 SHEET_DAY = "KPI Day"
 SHEET_CSAT = "CSAT Score"
 
-# Google Sheets Authentication
+# === GOOGLE SHEETS AUTHENTICATION ===
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 creds = Credentials.from_service_account_info(st.secrets["google_service_account"], scopes=SCOPES)
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID)
 
-# Lottie Animation
+# === LOAD LOTTIE ANIMATION ===
 def load_lottie_url(url):
     r = requests.get(url)
     return r.json() if r.status_code == 200 else None
 
 lottie_cheer = load_lottie_url("https://assets2.lottiefiles.com/packages/lf20_snmohqxj.json")
 
-# Load Sheets with caching
+# === LOAD SHEET DATA ===
 @st.cache_data
 def load_sheet(name):
     return pd.DataFrame(sheet.worksheet(name).get_all_records())
@@ -36,42 +37,52 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
-# Robust Time Conversion
-def time_to_seconds(time_val):
-    """Convert any time format to seconds (float)"""
-    if pd.isna(time_val) or time_val in ['', '0', 0, '00:00', '00:00:00']:
-        return 0.0
-    
-    if isinstance(time_val, (int, float)):
-        return float(time_val)
-    
-    if isinstance(time_val, str):
-        time_val = time_val.strip()
-        if ':' in time_val:
-            parts = time_val.split(':')
+# === BULLETPROOF TIME CONVERSION ===
+def strict_time_to_seconds(time_val):
+    """Convert ANY time format to seconds (float) with strict validation"""
+    try:
+        # Handle empty/missing values
+        if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00']:
+            return 0.0
+            
+        # If already numeric (seconds)
+        if isinstance(time_val, (int, float)):
+            return float(time_val)
+            
+        # Handle string formats
+        time_str = str(time_val).strip()
+        
+        # HH:MM:SS or MM:SS format
+        if ':' in time_str:
+            parts = time_str.split(':')
             if len(parts) == 3:  # HH:MM:SS
                 return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
             elif len(parts) == 2:  # MM:SS
                 return float(parts[0])*60 + float(parts[1])
-        return float(time_val) if time_val.replace('.','',1).isdigit() else 0.0
-    
-    return 0.0
+        
+        # Plain seconds as string
+        if time_str.replace('.','',1).isdigit():
+            return float(time_str)
+            
+        return 0.0
+    except:
+        return 0.0
 
-# Convert all time columns to numeric seconds
-time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
-for col in time_cols:
+# Convert ALL time columns to numeric seconds
+time_columns = ['AHT', 'Wrap', 'Hold', 'Auto On']
+for col in time_columns:
     if col in day_df.columns:
-        day_df[f"{col}_sec"] = day_df[col].apply(time_to_seconds)
+        day_df[f"{col}_sec"] = day_df[col].apply(strict_time_to_seconds)
         day_df[f"{col}_sec"] = pd.to_numeric(day_df[f"{col}_sec"], errors='coerce').fillna(0)
 
-# UI Banner
+# === DASHBOARD UI ===
 st.markdown("""
 <div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 20px;">
     KPI Dashboard for Champs
 </div>
 """, unsafe_allow_html=True)
 
-# Top Performers Section
+# === TOP PERFORMERS SECTION ===
 current_week = datetime.now().isocalendar()[1]
 
 try:
@@ -80,18 +91,18 @@ try:
     current_data = day_df[day_df['Week'].astype(str) == current_week_str].copy()
     
     if not current_data.empty:
-        # Calculate means using numeric columns only
+        # Calculate averages using numeric columns only
         avg_metrics = current_data.groupby(['EMP ID', 'NAME']).agg({
-            'AHT_sec': np.mean,
-            'Wrap_sec': np.mean,
-            'Hold_sec': np.mean,
-            'Auto On_sec': np.mean
+            'AHT_sec': lambda x: np.mean(x) if not x.empty else 0,
+            'Wrap_sec': lambda x: np.mean(x) if not x.empty else 0,
+            'Hold_sec': lambda x: np.mean(x) if not x.empty else 0,
+            'Auto On_sec': lambda x: np.mean(x) if not x.empty else 0
         }).reset_index()
         
         # Get CSAT data
         csat_data = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
-            'CSAT Resolution': np.mean,
-            'CSAT Behaviour': np.mean
+            'CSAT Resolution': lambda x: np.mean(x) if not x.empty else 0,
+            'CSAT Behaviour': lambda x: np.mean(x) if not x.empty else 0
         }).reset_index()
         
         # Merge data
@@ -116,29 +127,29 @@ try:
         top5 = performance.nlargest(5, 'Score')
         
         # Format for display
-        def format_time(seconds):
+        def format_duration(seconds):
             return str(timedelta(seconds=int(round(seconds))))
         
-        display_cols = {
-            'Rank': range(1, 6),
+        display_data = {
+            'Rank': range(1, len(top5)+1),
             'Agent': top5['NAME'],
-            '⏱ Avg AHT': top5['AHT_sec'].apply(format_time),
-            '📝 Avg Wrap': top5['Wrap_sec'].apply(format_time),
-            '🎧 Avg Hold': top5['Hold_sec'].apply(format_time),
-            '🔄 Auto-On': top5['Auto On_sec'].apply(format_time),
+            '⏱ Avg AHT': top5['AHT_sec'].apply(format_duration),
+            '📝 Avg Wrap': top5['Wrap_sec'].apply(format_duration),
+            '🎧 Avg Hold': top5['Hold_sec'].apply(format_duration),
+            '🔄 Auto-On': top5['Auto On_sec'].apply(format_duration),
             '💬 CSAT Res': top5['CSAT Resolution'].map("{:.1f}%".format),
             '😊 CSAT Beh': top5['CSAT Behaviour'].map("{:.1f}%".format),
-            '🏆 Score': top5['Score'].round(2)
+            '⭐ Score': top5['Score'].round(2)
         }
         
         st.markdown("### 🏆 Current Week Top Performers")
         st.dataframe(
-            pd.DataFrame(display_cols),
+            pd.DataFrame(display_data),
             height=250,
             use_container_width=True
         )
     else:
-        st.info("No data available for current week")
+        st.info("No performance data available for current week")
 except Exception as e:
     st.error(f"Error calculating top performers: {str(e)}")
 
