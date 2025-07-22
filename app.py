@@ -1,4 +1,5 @@
-# === app.py (Final Corrected Version) ===
+
+# === app.py (Final Working Version) ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -39,35 +40,36 @@ month_df = load_sheet(SHEET_MONTH)
 day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
-# === Improved Time Conversion ===
-def convert_to_seconds(time_str):
-    """Convert various time formats to total seconds"""
+# === Robust Time Conversion ===
+def convert_to_timedelta(time_str):
+    """Convert various time formats to timedelta"""
     if pd.isna(time_str) or time_str in ['', '0', 0]:
-        return 0
+        return pd.Timedelta(0)
     
     # Handle HH:MM:SS format
     if isinstance(time_str, str) and ':' in time_str:
+        parts = time_str.split(':')
         try:
-            h, m, s = map(float, time_str.split(':'))
-            return h * 3600 + m * 60 + s
+            if len(parts) == 3:  # HH:MM:SS
+                h, m, s = map(float, parts)
+                return pd.Timedelta(hours=h, minutes=m, seconds=s)
+            elif len(parts) == 2:  # MM:SS
+                m, s = map(float, parts)
+                return pd.Timedelta(minutes=m, seconds=s)
         except:
-            return 0
+            return pd.Timedelta(0)
     
     # Handle numeric seconds
     try:
-        return float(time_str)
+        return pd.Timedelta(seconds=float(time_str))
     except:
-        return 0
+        return pd.Timedelta(0)
 
-def prepare_time_data(df):
-    """Convert all time columns to seconds for calculations"""
-    time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
-    for col in time_cols:
-        if col in df.columns:
-            df[col+'_sec'] = df[col].apply(convert_to_seconds)
-    return df
-
-day_df = prepare_time_data(day_df)
+# Convert time columns to timedelta
+time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
+for col in time_cols:
+    if col in day_df.columns:
+        day_df[col] = day_df[col].apply(convert_to_timedelta)
 
 # === UI Banner ===
 st.markdown("""
@@ -84,12 +86,12 @@ try:
     current_week_data = day_df[day_df['Week'].astype(str) == str(current_week)].copy()
     
     if not current_week_data.empty:
-        # Calculate mean in seconds
+        # Calculate mean durations (works with timedelta)
         weekly_metrics = current_week_data.groupby(['EMP ID', 'NAME']).agg({
-            'AHT_sec': 'mean',
-            'Wrap_sec': 'mean',
-            'Hold_sec': 'mean',
-            'Auto On_sec': 'mean'
+            'AHT': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
+            'Wrap': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
+            'Hold': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s'),
+            'Auto On': lambda x: pd.to_timedelta(x.mean().total_seconds(), unit='s')
         }).reset_index()
         
         # Get CSAT data
@@ -107,12 +109,12 @@ try:
             top_data['CSAT Resolution'] = 0
             top_data['CSAT Behaviour'] = 0
         
-        # Calculate composite score
+        # Calculate composite score using seconds
         top_data['Score'] = (
-            (1/top_data['AHT_sec'].clip(lower=1)) +  # Lower AHT is better
-            (1/top_data['Wrap_sec'].clip(lower=1)) +  # Lower Wrap is better
-            (1/top_data['Hold_sec'].clip(lower=1)) +  # Lower Hold is better
-            top_data['Auto On_sec'] +  # Higher Auto-On is better
+            (1/top_data['AHT'].dt.total_seconds().clip(lower=1)) +  # Lower AHT is better
+            (1/top_data['Wrap'].dt.total_seconds().clip(lower=1)) +  # Lower Wrap is better
+            (1/top_data['Hold'].dt.total_seconds().clip(lower=1)) +  # Lower Hold is better
+            top_data['Auto On'].dt.total_seconds() +  # Higher Auto-On is better
             top_data['CSAT Resolution'] +  # Higher CSAT is better
             top_data['CSAT Behaviour']    # Higher CSAT is better
         )
@@ -120,16 +122,14 @@ try:
         # Get top 5
         top_5 = top_data.nlargest(5, 'Score').copy()
         
-        # Convert seconds back to HH:MM:SS for display
-        def sec_to_time(seconds):
-            return str(timedelta(seconds=round(seconds)))
-        
-        top_5['AHT'] = top_5['AHT_sec'].apply(sec_to_time)
-        top_5['Wrap'] = top_5['Wrap_sec'].apply(sec_to_time)
-        top_5['Hold'] = top_5['Hold_sec'].apply(sec_to_time)
-        top_5['Auto On'] = top_5['Auto On_sec'].apply(sec_to_time)
-        
         # Format display
+        def format_timedelta(td):
+            total_seconds = td.total_seconds()
+            hours = int(total_seconds // 3600)
+            minutes = int((total_seconds % 3600) // 60)
+            seconds = int(total_seconds % 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
         display_cols = {
             'NAME': 'Agent',
             'AHT': '⏱️ AHT',
@@ -140,10 +140,14 @@ try:
             'CSAT Behaviour': '😊 CSAT Beh'
         }
         
+        # Apply formatting
+        top_5_display = top_5[list(display_cols.keys())].copy()
+        for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
+            top_5_display[col] = top_5_display[col].apply(format_timedelta)
+        
         st.markdown("### 🏆 Current Week Top Performers")
         st.dataframe(
-            top_5[list(display_cols.keys())]
-            .rename(columns=display_cols)
+            top_5_display.rename(columns=display_cols)
             .style.format({
                 '💬 CSAT Res': '{:.1f}%',
                 '😊 CSAT Beh': '{:.1f}%'
