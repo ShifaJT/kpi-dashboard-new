@@ -29,38 +29,49 @@ def load_lottie_url(url):
 lottie_cheer = load_lottie_url("https://assets2.lottiefiles.com/packages/lf20_snmohqxj.json")
 lottie_trophy = load_lottie_url("https://assets1.lottiefiles.com/packages/lf20_0clcyar4.json")
 
-# === LOAD SHEET DATA ===
+# === IMPROVED DATA LOADING AND CLEANING ===
 @st.cache_data(ttl=3600)
-def load_sheet(name):
-    worksheet = sheet.worksheet(name)
-    records = worksheet.get_all_records()
-    df = pd.DataFrame(records)
-    df.columns = df.columns.str.strip()
-    return df
+def load_and_clean_sheet(name):
+    try:
+        worksheet = sheet.worksheet(name)
+        records = worksheet.get_all_records()
+        df = pd.DataFrame(records)
+        
+        # Clean column names and data
+        df.columns = df.columns.str.strip()
+        
+        # Convert all string columns to stripped strings
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].astype(str).str.strip()
+                
+        return df
+    except Exception as e:
+        st.error(f"Error loading {name} sheet: {str(e)}")
+        return pd.DataFrame()
 
-month_df = load_sheet(SHEET_MONTH)
-day_df = load_sheet(SHEET_DAY)
-csat_df = load_sheet(SHEET_CSAT)
+month_df = load_and_clean_sheet(SHEET_MONTH)
+day_df = load_and_clean_sheet(SHEET_DAY)
+csat_df = load_and_clean_sheet(SHEET_CSAT)
 
-# === IMPROVED TIME CONVERSION ===
+# === ROBUST TIME CONVERSION ===
 def convert_time_to_seconds(time_val):
     try:
         if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00']:
             return 0.0
             
-        if isinstance(time_val, (int, float)):
-            return float(time_val)
-            
         time_str = str(time_val).strip()
         
-        if len(time_str.split(':')) > 3:
-            time_str = ':'.join(time_str.split(':')[0:3])
+        # Handle malformed time strings with multiple colons
+        if time_str.count(':') > 2:
+            parts = time_str.split(':')
+            time_str = f"{parts[-3]}:{parts[-2]}:{parts[-1]}"
             
         if ':' in time_str:
             parts = time_str.split(':')
-            if len(parts) == 3:
+            if len(parts) == 3:  # HH:MM:SS
                 return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
-            elif len(parts) == 2:
+            elif len(parts) == 2:  # MM:SS
                 return float(parts[0])*60 + float(parts[1])
                 
         if time_str.replace('.','',1).isdigit():
@@ -70,74 +81,87 @@ def convert_time_to_seconds(time_val):
     except:
         return 0.0
 
-# Apply time conversion
+# Apply time conversion to relevant columns
 time_columns = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_columns:
     if col in day_df.columns:
         day_df[f"{col}_sec"] = day_df[col].apply(convert_time_to_seconds)
         day_df[f"{col}_sec"] = pd.to_numeric(day_df[f"{col}_sec"], errors='coerce').fillna(0)
 
-# Clean CSAT columns
-csat_df['CSAT Resolution'] = pd.to_numeric(csat_df['CSAT Resolution'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
-csat_df['CSAT Behaviour'] = pd.to_numeric(csat_df['CSAT Behaviour'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
-csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
-csat_df['NAME'] = csat_df['NAME'].str.strip()
+# === DATA NORMALIZATION ===
+def normalize_data(df):
+    """Ensure consistent data formats across sheets"""
+    if 'EMP ID' in df.columns:
+        df['EMP ID'] = df['EMP ID'].astype(str).str.strip()
+    if 'NAME' in df.columns:
+        df['NAME'] = df['NAME'].str.strip()
+    if 'Week' in df.columns:
+        df['Week'] = df['Week'].astype(str).str.strip()
+        df['Week'] = df['Week'].replace('', pd.NA).dropna()
+        try:
+            df['Week'] = df['Week'].astype(int).astype(str)
+        except:
+            pass
+    return df
 
-# Format dates
-day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
-day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
-day_df['EMP ID'] = day_df['EMP ID'].astype(str).str.strip()
-day_df['NAME'] = day_df['NAME'].str.strip()
+day_df = normalize_data(day_df)
+csat_df = normalize_data(csat_df)
+month_df = normalize_data(month_df)
+
+# Add week numbers to day data if not present
+if 'Week' not in day_df.columns and 'Date' in day_df.columns:
+    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
+    day_df['Week'] = day_df['Date'].dt.isocalendar().week.astype(str)
 
 # === TOP PERFORMERS CALCULATION ===
-def calculate_weekly_top_performers(current_week=None):
-    if current_week is None:
-        current_week = datetime.now().isocalendar()[1]
+def get_weekly_top_performers(target_week=None):
+    if target_week is None:
+        target_week = datetime.now().isocalendar()[1]
+    week_str = str(target_week)
     
-    current_week_str = str(current_week)
+    try:
+        # Get weekly data
+        week_day_data = day_df[day_df['Week'] == week_str]
+        week_csat_data = csat_df[csat_df['Week'] == week_str]
+        
+        if week_day_data.empty:
+            return pd.DataFrame()
+        
+        # Aggregate metrics
+        metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
+            'Call Count': 'sum',
+            'AHT_sec': 'mean',
+            'Wrap_sec': 'mean',
+            'Hold_sec': 'mean',
+            'Auto On_sec': 'mean'
+        }).reset_index()
+        
+        # Add CSAT scores if available
+        if not week_csat_data.empty:
+            csat_scores = week_csat_data.groupby(['EMP ID', 'NAME']).agg({
+                'CSAT Resolution': 'mean',
+                'CSAT Behaviour': 'mean'
+            }).reset_index()
+            metrics = pd.merge(metrics, csat_scores, on=['EMP ID', 'NAME'], how='left')
+        
+        metrics.fillna(0, inplace=True)
+        
+        # Calculate performance score (removed from display but kept for sorting)
+        metrics['Score'] = (
+            metrics['Call Count'] +
+            (1 / metrics['AHT_sec'].clip(lower=1)) * 100 +
+            (1 / metrics['Wrap_sec'].clip(lower=1)) * 50 +
+            (1 / metrics['Hold_sec'].clip(lower=1)) * 25 +
+            metrics['Auto On_sec'] +
+            metrics['CSAT Resolution'] * 10 +
+            metrics['CSAT Behaviour'] * 10
+        )
+        
+        return metrics.nlargest(5, 'Score').reset_index(drop=True)
     
-    # Get day data for the week
-    week_day_data = day_df[day_df['Week'] == current_week_str]
-    
-    # Get CSAT data for the week
-    week_csat_data = csat_df[csat_df['Week'] == current_week_str]
-    
-    if week_day_data.empty:
+    except Exception as e:
+        st.error(f"Error calculating top performers: {str(e)}")
         return pd.DataFrame()
-    
-    # Aggregate daily metrics
-    avg_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
-        'Call Count': 'sum',
-        'AHT_sec': 'mean',
-        'Wrap_sec': 'mean',
-        'Hold_sec': 'mean',
-        'Auto On_sec': 'mean'
-    }).reset_index()
-    
-    # Aggregate CSAT scores
-    csat_metrics = week_csat_data.groupby(['EMP ID', 'NAME']).agg({
-        'CSAT Resolution': 'mean',
-        'CSAT Behaviour': 'mean'
-    }).reset_index()
-    
-    # Merge all metrics
-    performance = pd.merge(avg_metrics, csat_metrics, on=['EMP ID', 'NAME'], how='left').fillna(0)
-    
-    # Scoring logic (higher is better)
-    performance['Score'] = (
-        performance['Call Count'] +
-        (1 / performance['AHT_sec'].clip(lower=1)) * 100 +
-        (1 / performance['Wrap_sec'].clip(lower=1)) * 50 +
-        (1 / performance['Hold_sec'].clip(lower=1)) * 25 +
-        performance['Auto On_sec'] +
-        performance['CSAT Resolution'] * 10 +
-        performance['CSAT Behaviour'] * 10
-    )
-    
-    # Get top 5 performers
-    top5 = performance.nlargest(5, 'Score').reset_index(drop=True)
-    
-    return top5
 
 # === DASHBOARD UI ===
 st.markdown("""
@@ -146,68 +170,48 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# === CURRENT WEEK TOP PERFORMERS SECTION ===
+# === CURRENT WEEK TOP PERFORMERS ===
 current_week = datetime.now().isocalendar()[1]
-top_performers = calculate_weekly_top_performers(current_week)
+top_performers = get_weekly_top_performers(current_week)
 
 if not top_performers.empty:
     st.markdown("### 🏅 Current Week's Top Performers")
     
-    # First row with top 3 performers
-    col1, col2, col3 = st.columns(3)
-    cols = [col1, col2, col3]
-    
-    for idx, row in top_performers[:3].iterrows():
+    # Display top 3 in one row
+    cols = st.columns(3)
+    for idx, row in top_performers.head(3).iterrows():
         with cols[idx]:
             st.markdown(f"""
             <div style='
-                background-color:#f0f2f6;
-                padding:12px;
+                background:#f0f2f6;
+                padding:10px;
                 border-radius:8px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                 margin-bottom:10px;
                 font-size:14px;
             '>
-                <div style='font-weight:bold; color:#333;'>
-                    {["🥇","🥈","🥉"][idx]} {row["NAME"]}
-                </div>
-                <div style='margin-top:4px;'>
-                    📞{int(row['Call Count'])} | ⏱️{str(timedelta(seconds=int(row['AHT_sec'])))}
-                </div>
-                <div>
-                    🤖{str(timedelta(seconds=int(row['Auto On_sec'])))} | 🕒{str(timedelta(seconds=int(row['Hold_sec'])))}
-                </div>
-                <div>
-                    😊{row['CSAT Resolution']:.1f}% | 👍{row['CSAT Behaviour']:.1f}%
-                </div>
+                <b>{['🥇','🥈','🥉'][idx]} {row['NAME']}</b><br>
+                📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
+                🤖 {timedelta(seconds=int(row['Auto On_sec']))} | 🕒 {timedelta(seconds=int(row['Hold_sec']))}<br>
+                😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%
             </div>
             """, unsafe_allow_html=True)
     
-    # Second row with next 2 performers (if available)
+    # Display next 2 in another row if available
     if len(top_performers) > 3:
-        col4, col5 = st.columns(2)
-        cols = [col4, col5]
-        
+        cols = st.columns(2)
         for idx, row in top_performers[3:5].iterrows():
             with cols[idx-3]:
                 st.markdown(f"""
                 <div style='
-                    background-color:#f0f2f6;
-                    padding:12px;
+                    background:#f0f2f6;
+                    padding:10px;
                     border-radius:8px;
-                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
                     margin-bottom:10px;
                     font-size:14px;
                 '>
-                    <div style='font-weight:bold; color:#333;'>
-                        🎖️ {row["NAME"]}
-                    </div>
-                    <div style='margin-top:4px;'>
-                        📞{int(row['Call Count'])} | ⏱️{str(timedelta(seconds=int(row['AHT_sec'])))}
-                    </div>
-                    <div>
-                        🤖{str(timedelta(seconds=int(row['Auto On_sec'])))}
-                    </div>
+                    <b>🎖️ {row['NAME']}</b><br>
+                    📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
+                    🤖 {timedelta(seconds=int(row['Auto On_sec']))}
                 </div>
                 """, unsafe_allow_html=True)
 else:
@@ -220,81 +224,79 @@ time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 if time_frame == "Week":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
-    # Get available weeks
-    available_weeks = sorted(set(day_df['Week'].unique()).union(set(csat_df['Week'].unique())))
-    available_weeks = [w for w in available_weeks if w.strip()]
-    selected_week = st.selectbox("📅 Select Week Number", available_weeks)
-
-    if emp_id and selected_week:
-        try:
-            week_data = day_df[
-                (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
-                (day_df["Week"] == selected_week.strip())
-            ]
-            
-            csat_data = csat_df[
-                (csat_df["EMP ID"].str.strip() == emp_id.strip()) &
-                (csat_df["Week"] == selected_week.strip())
-            ]
-            
-            if not week_data.empty:
-                emp_name = week_data["NAME"].iloc[0]
-                st.markdown(f"### 📊 Weekly KPI Data for **{emp_name}** | Week {selected_week}")
-
-                try:
-                    total_calls = week_data["Call Count"].sum()
-                    avg_aht = week_data["AHT_sec"].mean()
-                    avg_hold = week_data["Hold_sec"].mean()
-                    avg_wrap = week_data["Wrap_sec"].mean()
-                    avg_auto_on = week_data["Auto On_sec"].mean()
-
-                    def format_seconds(seconds):
-                        return str(timedelta(seconds=int(seconds))).split('.')[0]
-
-                    kpi_df = pd.DataFrame([
-                        ("📞 Total Calls", f"{int(total_calls)}"),
-                        ("⏱️ Avg AHT", format_seconds(avg_aht)),
-                        ("🕒 Avg Hold", format_seconds(avg_hold)),
-                        ("📝 Avg Wrap", format_seconds(avg_wrap)),
-                        ("🤖 Avg Auto On", format_seconds(avg_auto_on)),
-                    ], columns=["Metric", "Value"])
-
-                    st.dataframe(kpi_df, use_container_width=True, hide_index=True)
-
-                except Exception as e:
-                    st.error(f"⚠️ Error calculating metrics: {str(e)}")
-
-                if not csat_data.empty:
-                    st.subheader("😊 CSAT Scores")
-                    try:
-                        csat_res = csat_data["CSAT Resolution"].mean()
-                        csat_beh = csat_data["CSAT Behaviour"].mean()
-                        
-                        csat_df_show = pd.DataFrame([
-                            ("✅ CSAT Resolution", f"{csat_res:.1f}%"),
-                            ("👍 CSAT Behaviour", f"{csat_beh:.1f}%")
-                        ], columns=["Metric", "Value"])
-                        
-                        st.dataframe(csat_df_show, use_container_width=True, hide_index=True)
-                    except Exception as e:
-                        st.error(f"⚠️ Error displaying CSAT data: {str(e)}")
-                else:
-                    st.info("📭 No CSAT data found for this week.")
-
-                quotes = [
-                    "🚀 Keep up the momentum and aim higher!",
-                    "🌟 Greatness is built on good habits.",
-                    "📈 Stay consistent — growth follows.",
-                    "🔥 You've got the spark — now fire up more!",
-                    "💪 Progress is progress, no matter how small."
+    # Get available weeks safely
+    try:
+        day_weeks = set(day_df['Week'].dropna().unique()) if 'Week' in day_df.columns else set()
+        csat_weeks = set(csat_df['Week'].dropna().unique()) if 'Week' in csat_df.columns else set()
+        available_weeks = sorted(day_weeks.union(csat_weeks), key=lambda x: int(x) if x.isdigit() else 0)
+    except Exception as e:
+        st.error(f"Error loading week data: {str(e)}")
+        available_weeks = []
+    
+    if available_weeks:
+        selected_week = st.selectbox("📅 Select Week Number", available_weeks)
+        
+        if emp_id and selected_week:
+            try:
+                # Get week data
+                week_data = day_df[
+                    (day_df["EMP ID"] == emp_id.strip()) & 
+                    (day_df["Week"] == selected_week.strip())
                 ]
-                st.info(random.choice(quotes))
-            else:
-                st.warning("⚠️ No daily KPI data found for that EMP ID and week.")
                 
-        except Exception as e:
-            st.error(f"⚠️ An error occurred: {str(e)}")
+                # Get CSAT data
+                csat_data = csat_df[
+                    (csat_df["EMP ID"] == emp_id.strip()) &
+                    (csat_df["Week"] == selected_week.strip())
+                ]
+                
+                if not week_data.empty:
+                    emp_name = week_data.iloc[0]['NAME']
+                    st.markdown(f"### 📊 Weekly KPI Data for {emp_name} | Week {selected_week}")
+                    
+                    # Calculate metrics
+                    metrics = {
+                        "📞 Total Calls": int(week_data["Call Count"].sum()),
+                        "⏱️ Avg AHT": timedelta(seconds=int(week_data["AHT_sec"].mean())),
+                        "🕒 Avg Hold": timedelta(seconds=int(week_data["Hold_sec"].mean())),
+                        "📝 Avg Wrap": timedelta(seconds=int(week_data["Wrap_sec"].mean())),
+                        "🤖 Avg Auto On": timedelta(seconds=int(week_data["Auto On_sec"].mean()))
+                    }
+                    
+                    # Display metrics
+                    metric_df = pd.DataFrame(list(metrics.items()), columns=["Metric", "Value"])
+                    st.dataframe(metric_df, use_container_width=True, hide_index=True)
+                    
+                    # Display CSAT if available
+                    if not csat_data.empty:
+                        st.subheader("😊 CSAT Scores")
+                        csat_metrics = {
+                            "✅ CSAT Resolution": f"{csat_data['CSAT Resolution'].mean():.1f}%",
+                            "👍 CSAT Behaviour": f"{csat_data['CSAT Behaviour'].mean():.1f}%"
+                        }
+                        csat_df = pd.DataFrame(list(csat_metrics.items()), columns=["Metric", "Value"])
+                        st.dataframe(csat_df, use_container_width=True, hide_index=True)
+                    else:
+                        st.info("📭 No CSAT data found for this week.")
+                    
+                    # Motivational quote
+                    quotes = [
+                        "🚀 Keep up the momentum and aim higher!",
+                        "🌟 Greatness is built on good habits.",
+                        "📈 Stay consistent — growth follows.",
+                        "🔥 You've got the spark — now fire up more!",
+                        "💪 Progress is progress, no matter how small."
+                    ]
+                    st.info(random.choice(quotes))
+                else:
+                    st.warning("⚠️ No daily KPI data found for that EMP ID and week.")
+                    
+            except Exception as e:
+                st.error(f"Error displaying week data: {str(e)}")
+    else:
+        st.warning("No week data available")
 
+# ... [Rest of your Day and Month view code remains the same] ...
 # === DAY VIEW ===
 elif time_frame == "Day":
     emp_id = st.text_input("🔢 Enter EMP ID")
