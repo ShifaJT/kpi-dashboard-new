@@ -265,7 +265,7 @@ elif time_frame == "Week":
 
     selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
 
-   if emp_id and selected_week:
+  if emp_id and selected_week:
     week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
 
     csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
@@ -319,6 +319,7 @@ elif time_frame == "Week":
         st.info(random.choice(quotes))
     else:
         st.warning("No data found for that EMP ID and week.")
+
 
 # === DAY VIEW ===
 elif time_frame == "Day":
