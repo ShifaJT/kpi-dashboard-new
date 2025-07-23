@@ -196,19 +196,17 @@ def get_weekly_top_performers(target_week=None):
 
 # === DASHBOARD UI ===
 st.markdown("""
-<div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 20px;">
+<div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 10px;">
     🏆 KPI Dashboard for Champions 🏆
 </div>
 """, unsafe_allow_html=True)
 
-# === EMOJI METRIC LEGEND ===
+# === COMPACT EMOJI LEGEND ===
 st.markdown("""
-**📊 Metric Legend:**
-- 📞 Call Count | ⏱️ AHT (Average Handle Time)  
-- 🤖 Auto On Time | 🕒 Hold Time  
-- 😊 CSAT Resolution | 👍 CSAT Behaviour  
-- 🥇 Gold | 🥈 Silver | 🥉 Bronze | 🎖️ Top 5
-""")
+<div style="margin-bottom: 20px; font-size: 14px;">
+    <b>📊 Metrics:</b> 📞Calls | ⏱️AHT | 🤖AutoOn | 🕒Hold | 😊Res | 👍Beh | 🥇Gold | 🥈Silver | 🥉Bronze | 🎖️Top5
+</div>
+""", unsafe_allow_html=True)
 
 # === CURRENT WEEK TOP PERFORMERS ===
 current_week = datetime.now().isocalendar()[1]
@@ -217,49 +215,35 @@ top_performers = get_weekly_top_performers(current_week)
 if not top_performers.empty:
     st.markdown("### 🏅 Current Week's Top Performers")
     
-    # Display top 3 in one row
-    cols = st.columns(3)
-    for idx, row in top_performers.head(3).iterrows():
+    # Create a single row with all top performers
+    cols = st.columns(5)  # 5 columns for up to 5 top performers
+    
+    for idx, row in top_performers.iterrows():
         with cols[idx]:
-            # Check if CSAT data exists
+            # Determine medal emoji
+            medal = ['🥇', '🥈', '🥉', '🎖️', '🎖️'][idx] if idx < 5 else '🎖️'
+            
+            # Check which metrics are available
+            has_autoon = row['Auto On_sec'] > 0
             has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
             
-            st.markdown(f"""
+            # Build the display text
+            display_text = f"""
             <div style='
                 background:#f0f2f6;
-                padding:12px;
+                padding:10px;
                 border-radius:8px;
-                margin-bottom:12px;
-                font-size:14px;
+                margin-bottom:10px;
+                font-size:13px;
             '>
-                <b>{['🥇','🥈','🥉'][idx]} {row['NAME']}</b><br>
-                📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
-                🤖 {timedelta(seconds=int(row['Auto On_sec']))} | 🕒 {timedelta(seconds=int(row['Hold_sec']))}
-                {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
+                <b>{medal} {row['NAME']}</b><br>
+                📞{int(row['Call Count'])} ⏱️{timedelta(seconds=int(row['AHT_sec']))}
+                {f"<br>🤖{timedelta(seconds=int(row['Auto On_sec']))}" if has_autoon else ""}
+                {f"<br>😊{row['CSAT Resolution']:.1f}% 👍{row['CSAT Behaviour']:.1f}%" if has_csat else ""}
             </div>
-            """, unsafe_allow_html=True)
-    
-    # Display next 2 in another row if available
-    if len(top_performers) > 3:
-        cols = st.columns(2)
-        for idx, row in top_performers[3:5].iterrows():
-            with cols[idx-3]:
-                # Check if CSAT data exists
-                has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
-                
-                st.markdown(f"""
-                <div style='
-                    background:#f0f2f6;
-                    padding:12px;
-                    border-radius:8px;
-                    margin-bottom:12px;
-                    font-size:14px;
-                '>
-                    <b>🎖️ {row['NAME']}</b><br>
-                    📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}
-                    {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
-                </div>
-                """, unsafe_allow_html=True)
+            """
+            st.markdown(display_text, unsafe_allow_html=True)
+
 else:
     st.info("📭 No performance data available for the current week.")
 
