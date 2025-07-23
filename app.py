@@ -266,64 +266,58 @@ elif time_frame == "Week":
     selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
 
     if emp_id and selected_week:
-        week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
-        csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
-        csat_df['Week'] = csat_df['Week'].astype(str).str.strip()
+    week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
 
-        csat_data = csat_df[
-       (csat_df["EMP ID"] == emp_id.strip()) &
-       (csat_df["Week"] == str(selected_week).strip())
+    csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
+    csat_df['Week'] = csat_df['Week'].astype(str).str.strip()
+
+    csat_data = csat_df[
+        (csat_df["EMP ID"] == emp_id.strip()) &
+        (csat_df["Week"] == str(selected_week).strip())
     ]
 
-st.subheader("🛠 Debug Info")
-st.write("Entered EMP ID:", emp_id)
-st.write("Selected Week:", selected_week)
-st.write("Filtered CSAT Data:")
-st.dataframe(csat_data)
+    if not week_data.empty:
+        emp_name = week_data["NAME"].iloc[0]
+        st.markdown(f"### Weekly KPI Data for **{emp_name}** | Week {selected_week}")
 
-        if not week_data.empty:
-            emp_name = week_data["NAME"].iloc[0]
-            st.markdown(f"### Weekly KPI Data for **{emp_name}** | Week {selected_week}")
+        total_calls = week_data["Call Count"].sum()
+        avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
+        avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
+        avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
+        avg_auto_on = pd.to_timedelta(week_data["Auto On"]).mean()
 
-            total_calls = week_data["Call Count"].sum()
-            avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
-            avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
-            avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
-            avg_auto_on = pd.to_timedelta(week_data["Auto On"]).mean()
+        def fmt(td): return str(td).split(" ")[-1].split(".")[0]
 
-            def fmt(td): return str(td).split(" ")[-1].split(".")[0]
+        kpi_df = pd.DataFrame([
+            ("📞 Total Calls", total_calls),
+            ("⏱️ AHT", fmt(avg_aht)),
+            ("🎧 Hold", fmt(avg_hold)),
+            ("📝 Wrap", fmt(avg_wrap)),
+            ("🔄 Avg Auto On", fmt(avg_auto_on)),
+        ], columns=["Metric", "Value"])
 
-            kpi_df = pd.DataFrame([
-                ("📞 Total Calls", total_calls),
-("⏱️ AHT", fmt(avg_aht)),
-("🎧 Hold", fmt(avg_hold)),
-("📝 Wrap", fmt(avg_wrap)),
-("🔄 Avg Auto On", fmt(avg_auto_on)),
-            ], columns=["Metric", "Value"])
+        st.dataframe(kpi_df, use_container_width=True)
 
-            st.dataframe(kpi_df, use_container_width=True)
-
-            if not csat_data.empty:
-                st.subheader("CSAT Scores")
-                csat_df_show = pd.DataFrame([
-                    ("💬 CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
-                    ("😊 CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
-                ], columns=["Type", "Score"])
-                st.dataframe(csat_df_show, use_container_width=True)
-            else:
-                st.info("CSAT data not found for this week.")
-
-            quotes = [
-                " Keep up the momentum and aim higher!",
-                " Greatness is built on good habits.",
-                " Stay consistent — growth follows.",
-                " You’ve got the spark — now fire up more!",
-                " Progress is progress, no matter how small."
-            ]
-            st.info(random.choice(quotes))
+        if not csat_data.empty:
+            st.subheader("CSAT Scores")
+            csat_df_show = pd.DataFrame([
+                ("💬 CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
+                ("😊 CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
+            ], columns=["Type", "Score"])
+            st.dataframe(csat_df_show, use_container_width=True)
         else:
-            st.warning("No data found for that EMP ID and week.")
+            st.info("CSAT data not found for this week.")
 
+        quotes = [
+            " Keep up the momentum and aim higher!",
+            " Greatness is built on good habits.",
+            " Stay consistent — growth follows.",
+            " You’ve got the spark — now fire up more!",
+            " Progress is progress, no matter how small."
+        ]
+        st.info(random.choice(quotes))
+    else:
+        st.warning("No data found for that EMP ID and week.")
 # === DAY VIEW ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
