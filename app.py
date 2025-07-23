@@ -80,10 +80,14 @@ for col in time_columns:
 # Clean CSAT columns
 csat_df['CSAT Resolution'] = pd.to_numeric(csat_df['CSAT Resolution'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 csat_df['CSAT Behaviour'] = pd.to_numeric(csat_df['CSAT Behaviour'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
+csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
+csat_df['NAME'] = csat_df['NAME'].str.strip()
 
 # Format dates
 day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
 day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
+day_df['EMP ID'] = day_df['EMP ID'].astype(str).str.strip()
+day_df['NAME'] = day_df['NAME'].str.strip()
 
 # === TOP PERFORMERS CALCULATION ===
 def calculate_weekly_top_performers(current_week=None):
@@ -121,13 +125,13 @@ def calculate_weekly_top_performers(current_week=None):
     
     # Scoring logic (higher is better)
     performance['Score'] = (
-        performance['Call Count'] +  # Higher is better
-        (1 / performance['AHT_sec'].clip(lower=1)) * 100 +  # Lower AHT is better
-        (1 / performance['Wrap_sec'].clip(lower=1)) * 50 +  # Lower Wrap is better
-        (1 / performance['Hold_sec'].clip(lower=1)) * 25 +  # Lower Hold is better
-        performance['Auto On_sec'] +  # Higher is better
-        performance['CSAT Resolution'] * 10 +  # Higher is better
-        performance['CSAT Behaviour'] * 10  # Higher is better
+        performance['Call Count'] +
+        (1 / performance['AHT_sec'].clip(lower=1)) * 100 +
+        (1 / performance['Wrap_sec'].clip(lower=1)) * 50 +
+        (1 / performance['Hold_sec'].clip(lower=1)) * 25 +
+        performance['Auto On_sec'] +
+        performance['CSAT Resolution'] * 10 +
+        performance['CSAT Behaviour'] * 10
     )
     
     # Get top 5 performers
@@ -149,34 +153,63 @@ top_performers = calculate_weekly_top_performers(current_week)
 if not top_performers.empty:
     st.markdown("### 🏅 Current Week's Top Performers")
     
-    rank_icons = ['🥇', '🥈', '🥉', '🎖️', '🎖️']
+    # First row with top 3 performers
+    col1, col2, col3 = st.columns(3)
+    cols = [col1, col2, col3]
     
-    for idx, row in top_performers.iterrows():
-        col1, col2 = st.columns([1, 4])
-        with col1:
-            st.markdown(f"<div style='font-size:42px'>{rank_icons[idx]}</div>", unsafe_allow_html=True)
-        with col2:
+    for idx, row in top_performers[:3].iterrows():
+        with cols[idx]:
             st.markdown(f"""
             <div style='
                 background-color:#f0f2f6;
-                padding:20px;
-                border-radius:12px;
-                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
-                margin-bottom:15px;
+                padding:12px;
+                border-radius:8px;
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                margin-bottom:10px;
+                font-size:14px;
             '>
-                <div style='font-size:20px; font-weight:bold; color:#333;'>{row["NAME"]}</div>
-                <div style='margin-top:5px; font-size:16px;'>
-                    📞 Calls: <b>{int(row['Call Count'])}</b> &nbsp; | &nbsp;
-                    ⏱️ AHT: <b>{str(timedelta(seconds=int(row['AHT_sec'])))}</b> &nbsp; | &nbsp;
-                    🕒 Hold: <b>{str(timedelta(seconds=int(row['Hold_sec'])))}</b><br>
-                    📝 Wrap: <b>{str(timedelta(seconds=int(row['Wrap_sec'])))}</b> &nbsp; | &nbsp;
-                    🤖 Auto On: <b>{str(timedelta(seconds=int(row['Auto On_sec'])))}</b><br>
-                    😊 CSAT Res: <b>{row['CSAT Resolution']:.1f}%</b> &nbsp; | &nbsp;
-                    👍 CSAT Beh: <b>{row['CSAT Behaviour']:.1f}%</b> &nbsp; | &nbsp;
-                    🔢 Score: <b>{row['Score']:.2f}</b>
+                <div style='font-weight:bold; color:#333;'>
+                    {["🥇","🥈","🥉"][idx]} {row["NAME"]}
+                </div>
+                <div style='margin-top:4px;'>
+                    📞{int(row['Call Count'])} | ⏱️{str(timedelta(seconds=int(row['AHT_sec'])))}
+                </div>
+                <div>
+                    🤖{str(timedelta(seconds=int(row['Auto On_sec'])))} | 🕒{str(timedelta(seconds=int(row['Hold_sec'])))}
+                </div>
+                <div>
+                    😊{row['CSAT Resolution']:.1f}% | 👍{row['CSAT Behaviour']:.1f}%
                 </div>
             </div>
             """, unsafe_allow_html=True)
+    
+    # Second row with next 2 performers (if available)
+    if len(top_performers) > 3:
+        col4, col5 = st.columns(2)
+        cols = [col4, col5]
+        
+        for idx, row in top_performers[3:5].iterrows():
+            with cols[idx-3]:
+                st.markdown(f"""
+                <div style='
+                    background-color:#f0f2f6;
+                    padding:12px;
+                    border-radius:8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                    margin-bottom:10px;
+                    font-size:14px;
+                '>
+                    <div style='font-weight:bold; color:#333;'>
+                        🎖️ {row["NAME"]}
+                    </div>
+                    <div style='margin-top:4px;'>
+                        📞{int(row['Call Count'])} | ⏱️{str(timedelta(seconds=int(row['AHT_sec'])))}
+                    </div>
+                    <div>
+                        🤖{str(timedelta(seconds=int(row['Auto On_sec'])))}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
 else:
     st.info("📭 No performance data available for the current week.")
 
@@ -187,18 +220,20 @@ time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 if time_frame == "Week":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
+    # Get available weeks
     available_weeks = sorted(set(day_df['Week'].unique()).union(set(csat_df['Week'].unique())))
+    available_weeks = [w for w in available_weeks if w.strip()]
     selected_week = st.selectbox("📅 Select Week Number", available_weeks)
 
     if emp_id and selected_week:
         try:
             week_data = day_df[
-                (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
                 (day_df["Week"] == selected_week.strip())
             ]
             
             csat_data = csat_df[
-                (csat_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
+                (csat_df["EMP ID"].str.strip() == emp_id.strip()) &
                 (csat_df["Week"] == selected_week.strip())
             ]
             
@@ -271,7 +306,7 @@ elif time_frame == "Day":
     if emp_id and selected_date_str:
         selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
         daily_data = day_df[
-            (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+            (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
             (day_df["Date"] == selected_date)
         ]
         
