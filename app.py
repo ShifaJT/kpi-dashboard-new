@@ -265,7 +265,7 @@ elif time_frame == "Week":
 
     selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
 
-    if emp_id and selected_week:
+   if emp_id and selected_week:
     week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
 
     csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
@@ -286,7 +286,8 @@ elif time_frame == "Week":
         avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
         avg_auto_on = pd.to_timedelta(week_data["Auto On"]).mean()
 
-        def fmt(td): return str(td).split(" ")[-1].split(".")[0]
+        def fmt(td):
+            return str(td).split(" ")[-1].split(".")[0]
 
         kpi_df = pd.DataFrame([
             ("📞 Total Calls", total_calls),
@@ -318,6 +319,7 @@ elif time_frame == "Week":
         st.info(random.choice(quotes))
     else:
         st.warning("No data found for that EMP ID and week.")
+
 # === DAY VIEW ===
 elif time_frame == "Day":
     emp_id = st.text_input("Enter EMP ID")
