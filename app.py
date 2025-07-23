@@ -75,64 +75,67 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # === TOP PERFORMERS SECTION ===
-current_week = datetime.now().isocalendar()[1]
+st.markdown("### 🏆 Top Champs of the Week")
 
-try:
-    current_week_str = str(current_week)
-    current_data = day_df[day_df['Week'].astype(str) == current_week_str].copy()
+if not current_data.empty:
+    avg_metrics = current_data.groupby(['EMP ID', 'NAME']).agg({
+        'Call Count': 'sum',
+        'AHT_sec': 'mean',
+        'Wrap_sec': 'mean',
+        'Hold_sec': 'mean',
+        'Auto On_sec': 'mean'
+    }).reset_index()
 
-    if not current_data.empty:
-        avg_metrics = current_data.groupby(['EMP ID', 'NAME']).agg({
-            'AHT_sec': lambda x: np.mean(x) if not x.empty else 0,
-            'Wrap_sec': lambda x: np.mean(x) if not x.empty else 0,
-            'Hold_sec': lambda x: np.mean(x) if not x.empty else 0,
-            'Auto On_sec': lambda x: np.mean(x) if not x.empty else 0
-        }).reset_index()
+    csat_data = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
+        'CSAT Resolution': 'mean',
+        'CSAT Behaviour': 'mean'
+    }).reset_index()
 
-        csat_data = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
-            'CSAT Resolution': lambda x: np.mean(x) if not x.empty else 0,
-            'CSAT Behaviour': lambda x: np.mean(x) if not x.empty else 0
-        }).reset_index()
+    performance = pd.merge(avg_metrics, csat_data, on=['EMP ID', 'NAME'], how='left').fillna(0)
 
-        performance = pd.merge(
-            avg_metrics,
-            csat_data,
-            on=['EMP ID', 'NAME'],
-            how='left'
-        ).fillna(0)
+    # Scoring logic: higher is better for Call Count, Auto On, CSATs; lower is better for AHT, Wrap, Hold
+    performance['Score'] = (
+        performance['Call Count'] +
+        (1 / performance['AHT_sec'].clip(lower=1)) * 100 +
+        (1 / performance['Wrap_sec'].clip(lower=1)) * 50 +
+        (1 / performance['Hold_sec'].clip(lower=1)) * 25 +
+        performance['Auto On_sec'] +
+        performance['CSAT Resolution'] * 10 +
+        performance['CSAT Behaviour'] * 10
+    )
 
-        performance['Score'] = (
-            (1/performance['AHT_sec'].clip(lower=1)) +
-            (1/performance['Wrap_sec'].clip(lower=1)) +
-            (1/performance['Hold_sec'].clip(lower=1)) +
-            performance['Auto On_sec'] +
-            performance['CSAT Resolution'] +
-            performance['CSAT Behaviour']
-        )
+    top5 = performance.nlargest(5, 'Score').reset_index(drop=True)
 
-        top5 = performance.nlargest(5, 'Score')
+    rank_icons = ['🥇', '🥈', '🥉', '🏅', '🎖']
 
-        def format_duration(seconds):
-            return str(timedelta(seconds=int(round(seconds))))
-
-        display_data = {
-            'Rank': range(1, len(top5)+1),
-            'Agent': top5['NAME'],
-            '⏱ Avg AHT': top5['AHT_sec'].apply(format_duration),
-            '📝 Avg Wrap': top5['Wrap_sec'].apply(format_duration),
-            '🎧 Avg Hold': top5['Hold_sec'].apply(format_duration),
-            '🔄 Auto-On': top5['Auto On_sec'].apply(format_duration),
-            '💬 CSAT Res': top5['CSAT Resolution'].map("{:.1f}%".format),
-            '😊 CSAT Beh': top5['CSAT Behaviour'].map("{:.1f}%".format),
-            '⭐ Score': top5['Score'].round(2)
-        }
-
-        st.markdown("### 🏆 Current Week Top Performers")
-        st.dataframe(pd.DataFrame(display_data), height=250, use_container_width=True)
-    else:
-        st.info("No performance data available for current week")
-except Exception as e:
-    st.error(f"Error calculating top performers: {str(e)}")
+    for idx, row in top5.iterrows():
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.markdown(f"<div style='font-size:42px'>{rank_icons[idx]}</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div style='
+                background-color:#f0f2f6;
+                padding:20px;
+                border-radius:12px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+                margin-bottom:15px;
+            '>
+                <div style='font-size:20px; font-weight:bold; color:#333;'>{row["NAME"]}</div>
+                <div style='margin-top:5px; font-size:16px;'>
+                    📞 Calls: <b>{int(row['Call Count'])}</b> &nbsp; | &nbsp;
+                    ⏱ AHT: <b>{str(timedelta(seconds=int(row['AHT_sec'])))}</b> &nbsp; | &nbsp;
+                    🎧 Hold: <b>{str(timedelta(seconds=int(row['Hold_sec'])))}</b><br>
+                    📝 Wrap: <b>{str(timedelta(seconds=int(row['Wrap_sec'])))}</b> &nbsp; | &nbsp;
+                    🔄 Auto On: <b>{str(timedelta(seconds=int(row['Auto On_sec'])))}</b><br>
+                    💬 CSAT Res: <b>{row['CSAT Resolution']:.1f}%</b> &nbsp; | &nbsp;
+                    😊 CSAT Beh: <b>{row['CSAT Behaviour']:.1f}%</b> &nbsp; | &nbsp;
+                    ⭐ Score: <b>{row['Score']:.2f}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+else:
+    st.info("No performance data available for the current week.")
 
 # === TIMEFRAME SELECTOR ===
 time_frame = st.selectbox("Select Timeframe", ["Day", "Week", "Month"])
