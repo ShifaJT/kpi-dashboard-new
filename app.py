@@ -154,7 +154,7 @@ def get_weekly_top_performers(target_week=None):
         
         # Aggregate metrics - ensure all columns are numeric before aggregation
         metrics = week_day_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
-            'Call Count': 'sum',
+            'Call Count': 'sum',  # Still collected but not used in scoring
             'AHT_sec': 'mean',
             'Wrap_sec': 'mean',
             'Hold_sec': 'mean',
@@ -177,15 +177,16 @@ def get_weekly_top_performers(target_week=None):
         
         metrics.fillna(0, inplace=True)
         
-        # Calculate performance score (used for sorting only)
+        # === UPDATED SCORING LOGIC ===
+        # Lower times are better for AHT, Wrap, Hold (so we use 1/time)
+        # Higher values are better for Auto On and CSAT (used directly)
         metrics['Score'] = (
-            metrics['Call Count'] +
-            (1 / metrics['AHT_sec'].clip(lower=1)) * 100 +
-            (1 / metrics['Wrap_sec'].clip(lower=1)) * 50 +
-            (1 / metrics['Hold_sec'].clip(lower=1)) * 25 +
-            metrics['Auto On_sec'] +
-            metrics['CSAT Resolution'] * 10 +
-            metrics['CSAT Behaviour'] * 10
+            (1 / metrics['AHT_sec'].clip(lower=1)) * 50 +  # Most weight to AHT
+            (1 / metrics['Wrap_sec'].clip(lower=1)) * 30 +
+            (1 / metrics['Hold_sec'].clip(lower=1)) * 20 +
+            metrics['Auto On_sec'] * 0.1 +  # Smaller multiplier since values are large
+            metrics['CSAT Resolution'] * 2 +  # More weight to CSAT
+            metrics['CSAT Behaviour'] * 2
         )
         
         return metrics.nlargest(5, 'Score').reset_index(drop=True)
