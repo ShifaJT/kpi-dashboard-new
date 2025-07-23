@@ -39,41 +39,33 @@ csat_df = load_sheet(SHEET_CSAT)
 
 # === BULLETPROOF TIME CONVERSION ===
 def strict_time_to_seconds(time_val):
-    """Convert ANY time format to seconds (float) with strict validation"""
     try:
-        # Handle empty/missing values
         if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00']:
             return 0.0
-            
-        # If already numeric (seconds)
         if isinstance(time_val, (int, float)):
             return float(time_val)
-            
-        # Handle string formats
         time_str = str(time_val).strip()
-        
-        # HH:MM:SS or MM:SS format
         if ':' in time_str:
             parts = time_str.split(':')
-            if len(parts) == 3:  # HH:MM:SS
+            if len(parts) == 3:
                 return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
-            elif len(parts) == 2:  # MM:SS
+            elif len(parts) == 2:
                 return float(parts[0])*60 + float(parts[1])
-        
-        # Plain seconds as string
         if time_str.replace('.','',1).isdigit():
             return float(time_str)
-            
         return 0.0
     except:
         return 0.0
 
-# Convert ALL time columns to numeric seconds
 time_columns = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_columns:
     if col in day_df.columns:
         day_df[f"{col}_sec"] = day_df[col].apply(strict_time_to_seconds)
         day_df[f"{col}_sec"] = pd.to_numeric(day_df[f"{col}_sec"], errors='coerce').fillna(0)
+
+# === CLEAN CSAT COLUMNS TO PREVENT ERROR ===
+csat_df['CSAT Resolution'] = pd.to_numeric(csat_df['CSAT Resolution'], errors='coerce').fillna(0)
+csat_df['CSAT Behaviour'] = pd.to_numeric(csat_df['CSAT Behaviour'], errors='coerce').fillna(0)
 
 # === DASHBOARD UI ===
 st.markdown("""
@@ -86,34 +78,29 @@ st.markdown("""
 current_week = datetime.now().isocalendar()[1]
 
 try:
-    # Filter current week data
     current_week_str = str(current_week)
     current_data = day_df[day_df['Week'].astype(str) == current_week_str].copy()
-    
+
     if not current_data.empty:
-        # Calculate averages using numeric columns only
         avg_metrics = current_data.groupby(['EMP ID', 'NAME']).agg({
             'AHT_sec': lambda x: np.mean(x) if not x.empty else 0,
             'Wrap_sec': lambda x: np.mean(x) if not x.empty else 0,
             'Hold_sec': lambda x: np.mean(x) if not x.empty else 0,
             'Auto On_sec': lambda x: np.mean(x) if not x.empty else 0
         }).reset_index()
-        
-        # Get CSAT data
+
         csat_data = csat_df[csat_df['Week'].astype(str) == current_week_str].groupby(['EMP ID', 'NAME']).agg({
             'CSAT Resolution': lambda x: np.mean(x) if not x.empty else 0,
             'CSAT Behaviour': lambda x: np.mean(x) if not x.empty else 0
         }).reset_index()
-        
-        # Merge data
+
         performance = pd.merge(
             avg_metrics,
             csat_data,
             on=['EMP ID', 'NAME'],
             how='left'
         ).fillna(0)
-        
-        # Calculate composite score
+
         performance['Score'] = (
             (1/performance['AHT_sec'].clip(lower=1)) +
             (1/performance['Wrap_sec'].clip(lower=1)) +
@@ -122,14 +109,12 @@ try:
             performance['CSAT Resolution'] +
             performance['CSAT Behaviour']
         )
-        
-        # Get top 5 performers
+
         top5 = performance.nlargest(5, 'Score')
-        
-        # Format for display
+
         def format_duration(seconds):
             return str(timedelta(seconds=int(round(seconds))))
-        
+
         display_data = {
             'Rank': range(1, len(top5)+1),
             'Agent': top5['NAME'],
@@ -141,13 +126,9 @@ try:
             '😊 CSAT Beh': top5['CSAT Behaviour'].map("{:.1f}%".format),
             '⭐ Score': top5['Score'].round(2)
         }
-        
+
         st.markdown("### 🏆 Current Week Top Performers")
-        st.dataframe(
-            pd.DataFrame(display_data),
-            height=250,
-            use_container_width=True
-        )
+        st.dataframe(pd.DataFrame(display_data), height=250, use_container_width=True)
     else:
         st.info("No performance data available for current week")
 except Exception as e:
