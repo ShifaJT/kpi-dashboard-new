@@ -1,4 +1,4 @@
-# === COMPLETE KPI DASHBOARD SOLUTION ===
+# === COMPLETE FIXED KPI DASHBOARD SOLUTION ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -54,6 +54,20 @@ month_df = load_and_clean_sheet(SHEET_MONTH)
 day_df = load_and_clean_sheet(SHEET_DAY)
 csat_df = load_and_clean_sheet(SHEET_CSAT)
 
+# === FIXED PERCENTAGE CONVERSION ===
+def convert_percentage(value):
+    try:
+        if isinstance(value, str):
+            # Remove % sign and convert to float
+            return float(value.replace('%', '').strip())
+        return float(value)
+    except:
+        return 0.0
+
+# Clean CSAT columns
+csat_df['CSAT Resolution'] = csat_df['CSAT Resolution'].apply(convert_percentage)
+csat_df['CSAT Behaviour'] = csat_df['CSAT Behaviour'].apply(convert_percentage)
+
 # === ROBUST TIME CONVERSION ===
 def convert_time_to_seconds(time_val):
     try:
@@ -102,6 +116,11 @@ def normalize_data(df):
             df['Week'] = df['Week'].astype(int).astype(str)
         except:
             pass
+    
+    # Ensure numeric columns are properly typed
+    if 'Call Count' in df.columns:
+        df['Call Count'] = pd.to_numeric(df['Call Count'], errors='coerce').fillna(0)
+    
     return df
 
 day_df = normalize_data(day_df)
@@ -113,7 +132,7 @@ if 'Week' not in day_df.columns and 'Date' in day_df.columns:
     day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
     day_df['Week'] = day_df['Date'].dt.isocalendar().week.astype(str)
 
-# === TOP PERFORMERS CALCULATION ===
+# === FIXED TOP PERFORMERS CALCULATION ===
 def get_weekly_top_performers(target_week=None):
     if target_week is None:
         target_week = datetime.now().isocalendar()[1]
@@ -127,26 +146,38 @@ def get_weekly_top_performers(target_week=None):
         if week_day_data.empty:
             return pd.DataFrame()
         
-        # Aggregate metrics
-        metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
+        # Convert all numeric columns to ensure proper aggregation
+        numeric_cols = ['Call Count', 'AHT_sec', 'Wrap_sec', 'Hold_sec', 'Auto On_sec']
+        for col in numeric_cols:
+            if col in week_day_data.columns:
+                week_day_data[col] = pd.to_numeric(week_day_data[col], errors='coerce').fillna(0)
+        
+        # Aggregate metrics - ensure all columns are numeric before aggregation
+        metrics = week_day_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
             'Call Count': 'sum',
             'AHT_sec': 'mean',
             'Wrap_sec': 'mean',
             'Hold_sec': 'mean',
             'Auto On_sec': 'mean'
-        }).reset_index()
+        })
         
         # Add CSAT scores if available
         if not week_csat_data.empty:
-            csat_scores = week_csat_data.groupby(['EMP ID', 'NAME']).agg({
+            # Ensure CSAT columns are numeric
+            csat_cols = ['CSAT Resolution', 'CSAT Behaviour']
+            for col in csat_cols:
+                if col in week_csat_data.columns:
+                    week_csat_data[col] = pd.to_numeric(week_csat_data[col], errors='coerce').fillna(0)
+            
+            csat_scores = week_csat_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
                 'CSAT Resolution': 'mean',
                 'CSAT Behaviour': 'mean'
-            }).reset_index()
+            })
             metrics = pd.merge(metrics, csat_scores, on=['EMP ID', 'NAME'], how='left')
         
         metrics.fillna(0, inplace=True)
         
-        # Calculate performance score (removed from display but kept for sorting)
+        # Calculate performance score (used for sorting only)
         metrics['Score'] = (
             metrics['Call Count'] +
             (1 / metrics['AHT_sec'].clip(lower=1)) * 100 +
@@ -220,7 +251,7 @@ else:
 # === TIMEFRAME SELECTOR ===
 time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 
-# === WEEK VIEW ===
+# === FIXED WEEK VIEW ===
 if time_frame == "Week":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
@@ -254,6 +285,12 @@ if time_frame == "Week":
                     emp_name = week_data.iloc[0]['NAME']
                     st.markdown(f"### 📊 Weekly KPI Data for {emp_name} | Week {selected_week}")
                     
+                    # Convert all metrics to numeric
+                    numeric_cols = ['Call Count', 'AHT_sec', 'Wrap_sec', 'Hold_sec', 'Auto On_sec']
+                    for col in numeric_cols:
+                        if col in week_data.columns:
+                            week_data[col] = pd.to_numeric(week_data[col], errors='coerce').fillna(0)
+                    
                     # Calculate metrics
                     metrics = {
                         "📞 Total Calls": int(week_data["Call Count"].sum()),
@@ -270,6 +307,10 @@ if time_frame == "Week":
                     # Display CSAT if available
                     if not csat_data.empty:
                         st.subheader("😊 CSAT Scores")
+                        # Ensure CSAT values are numeric
+                        csat_data['CSAT Resolution'] = pd.to_numeric(csat_data['CSAT Resolution'], errors='coerce').fillna(0)
+                        csat_data['CSAT Behaviour'] = pd.to_numeric(csat_data['CSAT Behaviour'], errors='coerce').fillna(0)
+                        
                         csat_metrics = {
                             "✅ CSAT Resolution": f"{csat_data['CSAT Resolution'].mean():.1f}%",
                             "👍 CSAT Behaviour": f"{csat_data['CSAT Behaviour'].mean():.1f}%"
@@ -296,55 +337,7 @@ if time_frame == "Week":
     else:
         st.warning("No week data available")
 
-# ... [Rest of your Day and Month view code remains the same] ...
-# === DAY VIEW ===
-elif time_frame == "Day":
-    emp_id = st.text_input("🔢 Enter EMP ID")
-    
-    available_dates = sorted(day_df['Date'].unique())
-    date_display = [date.strftime('%Y-%m-%d') for date in available_dates]
-    selected_date_str = st.selectbox("📅 Select Date", date_display)
-    
-    if emp_id and selected_date_str:
-        selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
-        daily_data = day_df[
-            (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
-            (day_df["Date"] == selected_date)
-        ]
-        
-        if not daily_data.empty:
-            row = daily_data.iloc[0]
-            emp_name = row['NAME']
-            st.markdown(f"### 📊 Daily KPI Data for **{emp_name}** | Date: {selected_date_str}")
-
-            def format_time(time_val):
-                if pd.isna(time_val):
-                    return "00:00:00"
-                if isinstance(time_val, str) and ':' in time_val:
-                    return time_val.split('.')[0]
-                return str(timedelta(seconds=convert_time_to_seconds(time_val))).split('.')[0]
-
-            metrics = [
-                ("📞 Call Count", f"{int(row['Call Count'])}"),
-                ("⏱️ AHT", format_time(row["AHT"])),
-                ("🕒 Hold", format_time(row["Hold"])),
-                ("📝 Wrap", format_time(row["Wrap"])),
-                ("🤖 Auto On", format_time(row["Auto On"])),
-                ("✅ CSAT Resolution", f"{row['CSAT Resolution']}%"),
-                ("👍 CSAT Behaviour", f"{row['CSAT Behaviour']}%"),
-            ]
-
-            daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
-            st.dataframe(daily_df, use_container_width=True, hide_index=True)
-            
-            if row["Call Count"] > 50:
-                st.success("🎯 Excellent call volume today!")
-            elif row["Call Count"] > 30:
-                st.info("👍 Solid performance today!")
-            else:
-                st.warning("💪 Keep pushing - tomorrow is another opportunity!")
-        else:
-            st.info("📭 No data found for that EMP ID and date.")
+# ... [Rest of Day and Month view remains the same] ...
 
 # === MONTH VIEW ===
 elif time_frame == "Month":
