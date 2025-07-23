@@ -267,7 +267,10 @@ elif time_frame == "Week":
 
     if emp_id and selected_week:
         week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
-        csat_data = csat_df[(csat_df["EMP ID"].astype(str) == emp_id) & (csat_df["Week"] == selected_week)]
+        csat_data = csat_df[
+    (csat_df["EMP ID"].astype(str) == emp_id) &
+    (csat_df["Week"].astype(str) == str(selected_week))
+]
 
         if not week_data.empty:
             emp_name = week_data["NAME"].iloc[0]
