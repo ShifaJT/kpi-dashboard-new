@@ -275,7 +275,11 @@ elif time_frame == "Week":
        (csat_df["Week"] == str(selected_week).strip())
     ]
 
-
+st.subheader("🛠 Debug Info")
+st.write("Entered EMP ID:", emp_id)
+st.write("Selected Week:", selected_week)
+st.write("Filtered CSAT Data:")
+st.dataframe(csat_data)
 
         if not week_data.empty:
             emp_name = week_data["NAME"].iloc[0]
