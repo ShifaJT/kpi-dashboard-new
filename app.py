@@ -283,10 +283,10 @@ elif time_frame == "Week":
 
             kpi_df = pd.DataFrame([
                 ("📞 Total Calls", total_calls),
-                ("⏱️ AHT", fmt(avg_aht)),
-                ("🎧 Hold", fmt(avg_hold)),
-                ("📝 Wrap", fmt(avg_wrap)),
-                ("🔄 Avg Auto On", fmt(avg_auto_on)),
+("⏱️ AHT", fmt(avg_aht)),
+("🎧 Hold", fmt(avg_hold)),
+("📝 Wrap", fmt(avg_wrap)),
+("🔄 Avg Auto On", fmt(avg_auto_on)),
             ], columns=["Metric", "Value"])
 
             st.dataframe(kpi_df, use_container_width=True)
@@ -305,7 +305,7 @@ elif time_frame == "Week":
                 " Keep up the momentum and aim higher!",
                 " Greatness is built on good habits.",
                 " Stay consistent — growth follows.",
-                " You've got the spark — now fire up more!",
+                " You’ve got the spark — now fire up more!",
                 " Progress is progress, no matter how small."
             ]
             st.info(random.choice(quotes))
