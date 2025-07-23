@@ -77,7 +77,13 @@ st.markdown("""
 # === TOP PERFORMERS SECTION ===
 st.markdown("### 🏆 Top Champs of the Week")
 
-if not current_data.empty:
+if not day_df.empty:
+    current_week = datetime.now().isocalendar()[1]
+    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
+    day_df['Week'] = day_df['Date'].dt.isocalendar().week
+    current_data = day_df[day_df['Week'] == current_week]
+    current_week_str = str(current_week)
+
     avg_metrics = current_data.groupby(['EMP ID', 'NAME']).agg({
         'Call Count': 'sum',
         'AHT_sec': 'mean',
@@ -106,7 +112,7 @@ if not current_data.empty:
 
     top5 = performance.nlargest(5, 'Score').reset_index(drop=True)
 
-    rank_icons = ['🥇', '🥈', '🥉', '🏅', '🎖']
+    rank_icons = ['🥇', '🥈', '🥉', '🏋️', '🏅']
 
     for idx, row in top5.iterrows():
         col1, col2 = st.columns([1, 4])
@@ -126,7 +132,7 @@ if not current_data.empty:
                     📞 Calls: <b>{int(row['Call Count'])}</b> &nbsp; | &nbsp;
                     ⏱ AHT: <b>{str(timedelta(seconds=int(row['AHT_sec'])))}</b> &nbsp; | &nbsp;
                     🎧 Hold: <b>{str(timedelta(seconds=int(row['Hold_sec'])))}</b><br>
-                    📝 Wrap: <b>{str(timedelta(seconds=int(row['Wrap_sec'])))}</b> &nbsp; | &nbsp;
+                    🗒 Wrap: <b>{str(timedelta(seconds=int(row['Wrap_sec'])))}</b> &nbsp; | &nbsp;
                     🔄 Auto On: <b>{str(timedelta(seconds=int(row['Auto On_sec'])))}</b><br>
                     💬 CSAT Res: <b>{row['CSAT Resolution']:.1f}%</b> &nbsp; | &nbsp;
                     😊 CSAT Beh: <b>{row['CSAT Behaviour']:.1f}%</b> &nbsp; | &nbsp;
