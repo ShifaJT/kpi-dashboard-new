@@ -1,4 +1,4 @@
-# === COMPLETE FIXED KPI DASHBOARD SOLUTION ===
+# === COMPLETE KPI DASHBOARD SOLUTION ===
 import streamlit as st
 import pandas as pd
 import gspread
@@ -201,6 +201,15 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# === EMOJI METRIC LEGEND ===
+st.markdown("""
+**📊 Metric Legend:**
+- 📞 Call Count | ⏱️ AHT (Average Handle Time)  
+- 🤖 Auto On Time | 🕒 Hold Time  
+- 😊 CSAT Resolution | 👍 CSAT Behaviour  
+- 🥇 Gold | 🥈 Silver | 🥉 Bronze | 🎖️ Top 5
+""")
+
 # === CURRENT WEEK TOP PERFORMERS ===
 current_week = datetime.now().isocalendar()[1]
 top_performers = get_weekly_top_performers(current_week)
@@ -212,18 +221,21 @@ if not top_performers.empty:
     cols = st.columns(3)
     for idx, row in top_performers.head(3).iterrows():
         with cols[idx]:
+            # Check if CSAT data exists
+            has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
+            
             st.markdown(f"""
             <div style='
                 background:#f0f2f6;
-                padding:10px;
+                padding:12px;
                 border-radius:8px;
-                margin-bottom:10px;
+                margin-bottom:12px;
                 font-size:14px;
             '>
                 <b>{['🥇','🥈','🥉'][idx]} {row['NAME']}</b><br>
                 📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
-                🤖 {timedelta(seconds=int(row['Auto On_sec']))} | 🕒 {timedelta(seconds=int(row['Hold_sec']))}<br>
-                😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%
+                🤖 {timedelta(seconds=int(row['Auto On_sec']))} | 🕒 {timedelta(seconds=int(row['Hold_sec']))}
+                {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
             </div>
             """, unsafe_allow_html=True)
     
@@ -232,17 +244,20 @@ if not top_performers.empty:
         cols = st.columns(2)
         for idx, row in top_performers[3:5].iterrows():
             with cols[idx-3]:
+                # Check if CSAT data exists
+                has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
+                
                 st.markdown(f"""
                 <div style='
                     background:#f0f2f6;
-                    padding:10px;
+                    padding:12px;
                     border-radius:8px;
-                    margin-bottom:10px;
+                    margin-bottom:12px;
                     font-size:14px;
                 '>
                     <b>🎖️ {row['NAME']}</b><br>
-                    📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
-                    🤖 {timedelta(seconds=int(row['Auto On_sec']))}
+                    📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}
+                    {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
                 </div>
                 """, unsafe_allow_html=True)
 else:
@@ -251,7 +266,7 @@ else:
 # === TIMEFRAME SELECTOR ===
 time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 
-# === FIXED WEEK VIEW ===
+# === WEEK VIEW ===
 if time_frame == "Week":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
@@ -337,7 +352,54 @@ if time_frame == "Week":
     else:
         st.warning("No week data available")
 
-# ... [Rest of Day and Month view remains the same] ...
+# === DAY VIEW ===
+elif time_frame == "Day":
+    emp_id = st.text_input("🔢 Enter EMP ID")
+    
+    available_dates = sorted(day_df['Date'].unique())
+    date_display = [date.strftime('%Y-%m-%d') for date in available_dates]
+    selected_date_str = st.selectbox("📅 Select Date", date_display)
+    
+    if emp_id and selected_date_str:
+        selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
+        daily_data = day_df[
+            (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
+            (day_df["Date"] == selected_date)
+        ]
+        
+        if not daily_data.empty:
+            row = daily_data.iloc[0]
+            emp_name = row['NAME']
+            st.markdown(f"### 📊 Daily KPI Data for **{emp_name}** | Date: {selected_date_str}")
+
+            def format_time(time_val):
+                if pd.isna(time_val):
+                    return "00:00:00"
+                if isinstance(time_val, str) and ':' in time_val:
+                    return time_val.split('.')[0]
+                return str(timedelta(seconds=convert_time_to_seconds(time_val))).split('.')[0]
+
+            metrics = [
+                ("📞 Call Count", f"{int(row['Call Count'])}"),
+                ("⏱️ AHT", format_time(row["AHT"])),
+                ("🕒 Hold", format_time(row["Hold"])),
+                ("📝 Wrap", format_time(row["Wrap"])),
+                ("🤖 Auto On", format_time(row["Auto On"])),
+                ("✅ CSAT Resolution", f"{row['CSAT Resolution']}%"),
+                ("👍 CSAT Behaviour", f"{row['CSAT Behaviour']}%"),
+            ]
+
+            daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
+            st.dataframe(daily_df, use_container_width=True, hide_index=True)
+            
+            if row["Call Count"] > 50:
+                st.success("🎯 Excellent call volume today!")
+            elif row["Call Count"] > 30:
+                st.info("👍 Solid performance today!")
+            else:
+                st.warning("💪 Keep pushing - tomorrow is another opportunity!")
+        else:
+            st.info("📭 No data found for that EMP ID and date.")
 
 # === MONTH VIEW ===
 elif time_frame == "Month":
