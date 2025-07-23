@@ -35,8 +35,6 @@ def load_sheet(name):
     worksheet = sheet.worksheet(name)
     records = worksheet.get_all_records()
     df = pd.DataFrame(records)
-    
-    # Clean column names by stripping whitespace
     df.columns = df.columns.str.strip()
     return df
 
@@ -55,15 +53,14 @@ def convert_time_to_seconds(time_val):
             
         time_str = str(time_val).strip()
         
-        # Handle cases where multiple times are concatenated
         if len(time_str.split(':')) > 3:
-            time_str = time_str.split(':')[0:3]  # Take first three components
+            time_str = ':'.join(time_str.split(':')[0:3])
             
         if ':' in time_str:
             parts = time_str.split(':')
-            if len(parts) == 3:  # HH:MM:SS format
+            if len(parts) == 3:
                 return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
-            elif len(parts) == 2:  # MM:SS format
+            elif len(parts) == 2:
                 return float(parts[0])*60 + float(parts[1])
                 
         if time_str.replace('.','',1).isdigit():
@@ -73,7 +70,7 @@ def convert_time_to_seconds(time_val):
     except:
         return 0.0
 
-# Apply time conversion to relevant columns
+# Apply time conversion
 time_columns = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_columns:
     if col in day_df.columns:
@@ -84,8 +81,59 @@ for col in time_columns:
 csat_df['CSAT Resolution'] = pd.to_numeric(csat_df['CSAT Resolution'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 csat_df['CSAT Behaviour'] = pd.to_numeric(csat_df['CSAT Behaviour'].astype(str).str.replace('%', ''), errors='coerce').fillna(0)
 
-# Format dates properly in day_df
+# Format dates
 day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
+day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
+
+# === TOP PERFORMERS CALCULATION ===
+def calculate_weekly_top_performers(current_week=None):
+    if current_week is None:
+        current_week = datetime.now().isocalendar()[1]
+    
+    current_week_str = str(current_week)
+    
+    # Get day data for the week
+    week_day_data = day_df[day_df['Week'] == current_week_str]
+    
+    # Get CSAT data for the week
+    week_csat_data = csat_df[csat_df['Week'] == current_week_str]
+    
+    if week_day_data.empty:
+        return pd.DataFrame()
+    
+    # Aggregate daily metrics
+    avg_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
+        'Call Count': 'sum',
+        'AHT_sec': 'mean',
+        'Wrap_sec': 'mean',
+        'Hold_sec': 'mean',
+        'Auto On_sec': 'mean'
+    }).reset_index()
+    
+    # Aggregate CSAT scores
+    csat_metrics = week_csat_data.groupby(['EMP ID', 'NAME']).agg({
+        'CSAT Resolution': 'mean',
+        'CSAT Behaviour': 'mean'
+    }).reset_index()
+    
+    # Merge all metrics
+    performance = pd.merge(avg_metrics, csat_metrics, on=['EMP ID', 'NAME'], how='left').fillna(0)
+    
+    # Scoring logic (higher is better)
+    performance['Score'] = (
+        performance['Call Count'] +  # Higher is better
+        (1 / performance['AHT_sec'].clip(lower=1)) * 100 +  # Lower AHT is better
+        (1 / performance['Wrap_sec'].clip(lower=1)) * 50 +  # Lower Wrap is better
+        (1 / performance['Hold_sec'].clip(lower=1)) * 25 +  # Lower Hold is better
+        performance['Auto On_sec'] +  # Higher is better
+        performance['CSAT Resolution'] * 10 +  # Higher is better
+        performance['CSAT Behaviour'] * 10  # Higher is better
+    )
+    
+    # Get top 5 performers
+    top5 = performance.nlargest(5, 'Score').reset_index(drop=True)
+    
+    return top5
 
 # === DASHBOARD UI ===
 st.markdown("""
@@ -94,6 +142,44 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# === CURRENT WEEK TOP PERFORMERS SECTION ===
+current_week = datetime.now().isocalendar()[1]
+top_performers = calculate_weekly_top_performers(current_week)
+
+if not top_performers.empty:
+    st.markdown("### 🏅 Current Week's Top Performers")
+    
+    rank_icons = ['🥇', '🥈', '🥉', '🎖️', '🎖️']
+    
+    for idx, row in top_performers.iterrows():
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            st.markdown(f"<div style='font-size:42px'>{rank_icons[idx]}</div>", unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div style='
+                background-color:#f0f2f6;
+                padding:20px;
+                border-radius:12px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+                margin-bottom:15px;
+            '>
+                <div style='font-size:20px; font-weight:bold; color:#333;'>{row["NAME"]}</div>
+                <div style='margin-top:5px; font-size:16px;'>
+                    📞 Calls: <b>{int(row['Call Count'])}</b> &nbsp; | &nbsp;
+                    ⏱️ AHT: <b>{str(timedelta(seconds=int(row['AHT_sec'])))}</b> &nbsp; | &nbsp;
+                    🕒 Hold: <b>{str(timedelta(seconds=int(row['Hold_sec'])))}</b><br>
+                    📝 Wrap: <b>{str(timedelta(seconds=int(row['Wrap_sec'])))}</b> &nbsp; | &nbsp;
+                    🤖 Auto On: <b>{str(timedelta(seconds=int(row['Auto On_sec'])))}</b><br>
+                    😊 CSAT Res: <b>{row['CSAT Resolution']:.1f}%</b> &nbsp; | &nbsp;
+                    👍 CSAT Beh: <b>{row['CSAT Behaviour']:.1f}%</b> &nbsp; | &nbsp;
+                    🔢 Score: <b>{row['Score']:.2f}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+else:
+    st.info("📭 No performance data available for the current week.")
+
 # === TIMEFRAME SELECTOR ===
 time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 
@@ -101,23 +187,16 @@ time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 if time_frame == "Week":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
-    # Ensure Week is properly formatted as string for comparison
-    day_df['Week'] = day_df['Week'].astype(str).str.strip()
-    csat_df['Week'] = csat_df['Week'].astype(str).str.strip()
-    
-    # Get available weeks from both dataframes
     available_weeks = sorted(set(day_df['Week'].unique()).union(set(csat_df['Week'].unique())))
     selected_week = st.selectbox("📅 Select Week Number", available_weeks)
 
     if emp_id and selected_week:
         try:
-            # Process day data
             week_data = day_df[
                 (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
                 (day_df["Week"] == selected_week.strip())
             ]
             
-            # Process CSAT data
             csat_data = csat_df[
                 (csat_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
                 (csat_df["Week"] == selected_week.strip())
@@ -127,7 +206,6 @@ if time_frame == "Week":
                 emp_name = week_data["NAME"].iloc[0]
                 st.markdown(f"### 📊 Weekly KPI Data for **{emp_name}** | Week {selected_week}")
 
-                # Calculate metrics
                 try:
                     total_calls = week_data["Call Count"].sum()
                     avg_aht = week_data["AHT_sec"].mean()
@@ -151,11 +229,9 @@ if time_frame == "Week":
                 except Exception as e:
                     st.error(f"⚠️ Error calculating metrics: {str(e)}")
 
-                # Display CSAT data if available
                 if not csat_data.empty:
                     st.subheader("😊 CSAT Scores")
                     try:
-                        # Get the mean CSAT scores if multiple entries exist
                         csat_res = csat_data["CSAT Resolution"].mean()
                         csat_beh = csat_data["CSAT Behaviour"].mean()
                         
@@ -170,7 +246,6 @@ if time_frame == "Week":
                 else:
                     st.info("📭 No CSAT data found for this week.")
 
-                # Motivational quote
                 quotes = [
                     "🚀 Keep up the momentum and aim higher!",
                     "🌟 Greatness is built on good habits.",
@@ -189,11 +264,7 @@ if time_frame == "Week":
 elif time_frame == "Day":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
-    # Format dates properly for display
-    day_df['Date'] = pd.to_datetime(day_df['Date']).dt.date
     available_dates = sorted(day_df['Date'].unique())
-    
-    # Convert dates to strings for display but keep as date objects for filtering
     date_display = [date.strftime('%Y-%m-%d') for date in available_dates]
     selected_date_str = st.selectbox("📅 Select Date", date_display)
     
@@ -213,7 +284,7 @@ elif time_frame == "Day":
                 if pd.isna(time_val):
                     return "00:00:00"
                 if isinstance(time_val, str) and ':' in time_val:
-                    return time_val.split('.')[0]  # Remove milliseconds if present
+                    return time_val.split('.')[0]
                 return str(timedelta(seconds=convert_time_to_seconds(time_val))).split('.')[0]
 
             metrics = [
@@ -229,7 +300,6 @@ elif time_frame == "Day":
             daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
             st.dataframe(daily_df, use_container_width=True, hide_index=True)
             
-            # Daily performance comment
             if row["Call Count"] > 50:
                 st.success("🎯 Excellent call volume today!")
             elif row["Call Count"] > 30:
@@ -244,7 +314,6 @@ elif time_frame == "Month":
     df = month_df
     emp_id = st.text_input("🔢 Enter EMP ID (e.g., 1070)")
     
-    # Get available months in proper order
     month_order = ["January", "February", "March", "April", "May", "June", 
                   "July", "August", "September", "October", "November", "December"]
     available_months = [m for m in month_order if m in df['Month'].unique()]
