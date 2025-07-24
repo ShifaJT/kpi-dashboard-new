@@ -398,13 +398,13 @@ elif time_frame == "Week":
             
             # Format time columns
             for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
-                daily_breakdown[col] = daily_breakdown[col].apply
+                daily_breakdown[col] = daily_breakdown[col].apply(
                     lambda x: str(timedelta(seconds=int(x))).split('.')[0]
             
             st.dataframe(daily_breakdown, hide_index=True, use_container_width=True)
             
         else:
-            st.warning("No data found for this EMP ID and week")
+            st.warning("No data found for this EMP ID and week"))
 
 # ===== MONTH VIEW =====
 elif time_frame == "Month":
