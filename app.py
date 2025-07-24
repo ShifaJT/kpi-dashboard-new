@@ -286,7 +286,7 @@ elif time_frame == "Week":
                     
                     def format_avg_time(col):
                         avg_sec = week_calls[f"{col}_sec"].mean()
-                        return str(timedelta(seconds=int(avg_sec))[2:7]  # MM:SS format
+                        return str(timedelta(seconds=int(avg_sec)))[2:7]  # MM:SS format
                     
                     # Display metrics
                     st.subheader(f"Week {selected_week} Performance")
