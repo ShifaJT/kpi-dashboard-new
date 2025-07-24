@@ -169,8 +169,7 @@ elif time_frame == "Week":
                     "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean()))[:-3],
                     "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean()))[:-3],
                     "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean()))[:-3],
-                    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean()))[:-3])
-                }
+                    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean()))[:-3])}
                 
                 # Add CSAT if available
                 if not week_csat.empty:
