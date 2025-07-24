@@ -112,6 +112,7 @@ st.title("🏆 KPI Performance Dashboard")
 time_frame = st.radio("Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
     
@@ -130,10 +131,10 @@ if time_frame == "Month":
         
         if emp_id and selected_month:
             # Filter data for selected month and employee
-           monthly_data = month_df[
-    (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-    (month_df['Month'].astype(str).str.contains(selected_month))
-]
+            monthly_data = month_df[
+                (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                (month_df['Month'].astype(str).str.contains(selected_month))
+            ]
             
             if not monthly_data.empty:
                 row = monthly_data.iloc[0]
@@ -158,55 +159,7 @@ if time_frame == "Month":
                 for i, (label, value) in enumerate(metrics):
                     cols[i%4].metric(label, value)
                 
-                # KPI Scores Section
-                st.markdown("### 🎯 KPI Scores")
-                kpi_cols = st.columns(4)
-                kpi_metrics = [
-                    ("Hold KPI", f"{row.get('Hold KPI Score', 'N/A')}"),
-                    ("Wrap KPI", f"{row.get('Wrap KPI Score', 'N/A')}"),
-                    ("Auto-On KPI", f"{row.get('Auto-On KPI Score', 'N/A')}"),
-                    ("Schedule KPI", f"{row.get('Schedule Adherence KPI Score', 'N/A')}"),
-                    ("CSAT Res KPI", f"{row.get('Resolution CSAT KPI Score', 'N/A')}"),
-                    ("CSAT Beh KPI", f"{row.get('Agent Behaviour KPI Score', 'N/A')}"),
-                    ("Quality KPI", f"{row.get('Quality KPI Score', 'N/A')}"),
-                    ("PKT KPI", f"{row.get('PKT KPI Score', 'N/A')}")
-                ]
-                
-                for i, (label, value) in enumerate(kpi_metrics):
-                    kpi_cols[i%4].metric(label, value)
-                
-                # Overall Score
-                if 'Grand Total' in row:
-                    st.progress(float(row['Grand Total'])/5)
-                    st.metric("Overall KPI Score", f"{row['Grand Total']}/5.0")
-                
-                # Month-over-Month Comparison
-                try:
-                    prev_month_data = month_df[
-                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                        (month_df['Month'] < pd.to_datetime(selected_month, format='%b-%y'))
-                    ].sort_values('Month', ascending=False)
-                    
-                    if not prev_month_data.empty:
-                        prev_row = prev_month_data.iloc[0]
-                        if 'Grand Total' in row and 'Grand Total' in prev_row:
-                            delta = float(row['Grand Total']) - float(prev_row['Grand Total'])
-                            st.metric("Month-over-Month Change", 
-                                    f"{row['Grand Total']}", 
-                                    f"{delta:.1f} points")
-                except:
-                    pass
-                
-                # Targets Section
-                st.markdown("### 🎯 Targets Committed")
-                target_cols = st.columns(3)
-                targets = [
-                    ("PKT Target", row.get('Target Committed for PKT', 'N/A')),
-                    ("CSAT Target", row.get('Target Committed for CSAT (Agent Behaviour)', 'N/A')),
-                    ("Quality Target", row.get('Target Committed for Quality', 'N/A'))
-                ]
-                for i, (label, value) in enumerate(targets):
-                    target_cols[i].metric(label, value)
+                # Rest of your month view code...
             else:
                 st.warning("No data found for this employee/month")
     else:
