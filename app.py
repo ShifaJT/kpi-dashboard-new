@@ -130,10 +130,10 @@ if time_frame == "Month":
         
         if emp_id and selected_month:
             # Filter data for selected month and employee
-            monthly_data = month_df[
-                (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                (month_df['Month'].astype(str).str.contains(selected_month)
-            ]
+           monthly_data = month_df[
+    (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+    (month_df['Month'].astype(str).str.contains(selected_month))
+]
             
             if not monthly_data.empty:
                 row = monthly_data.iloc[0]
