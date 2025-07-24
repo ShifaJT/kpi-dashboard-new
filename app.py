@@ -198,12 +198,12 @@ elif time_frame == "Week":
                 if not week_calls.empty:
                     # Calculate metrics
                     metrics = {
-                        "📞 Total Calls": int(week_calls["Call Count"].sum()),
-                        "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean()))[:-3],
-                        "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean()))[:-3],
-                        "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean()))[:-3],
-                        "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean()))[:-3]
-                    }
+    "📞 Total Calls": int(week_calls["Call Count"].sum()),
+    "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean()))[:-3],  # Fixed
+    "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3],  # Fixed
+    "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3],  # Fixed
+    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]  # Fixed
+}
                     
                     # Add CSAT if available
                     if not week_csat.empty:
