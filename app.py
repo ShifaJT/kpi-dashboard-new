@@ -21,91 +21,85 @@ creds = Credentials.from_service_account_info(st.secrets["google_service_account
 client = gspread.authorize(creds)
 sheet = client.open_by_key(SHEET_ID)
 
-# ===== DATA LOADING =====
+# ===== IMPROVED DATA LOADING =====
 @st.cache_data(ttl=3600)
-def load_sheet_with_headers(name, expected_headers):
+def safe_load_sheet(name):
     try:
         worksheet = sheet.worksheet(name)
-        records = worksheet.get_all_records(expected_headers=expected_headers)
-        df = pd.DataFrame(records)
+        
+        # Get all values to inspect headers
+        all_values = worksheet.get_all_values()
+        
+        if not all_values or len(all_values) < 1:
+            return pd.DataFrame()
+            
+        # Get headers from first row
+        headers = [str(h).strip() for h in all_values[0]]
+        
+        # Create DataFrame with data rows
+        data = all_values[1:] if len(all_values) > 1 else []
+        df = pd.DataFrame(data, columns=headers)
         
         # Clean data
-        df = df.dropna(how='all')  # Remove empty rows
-        df = df.loc[:, ~df.columns.duplicated()]  # Remove duplicate columns
+        df = df.replace('', pd.NA).dropna(how='all')
         
-        # Clean string columns
-        for col in df.columns:
-            if df[col].dtype == object:
-                df[col] = df[col].astype(str).str.strip()
-                df[col] = df[col].replace('', pd.NA)
-                
         return df
     except Exception as e:
         st.error(f"Error loading {name} sheet: {str(e)}")
         return pd.DataFrame()
 
-# Define expected headers matching your Google Sheets
-MONTH_HEADERS = [
-    "EMP ID", "NAME", "Month", "Hold", "Wrap", "Auto-On", "Schedule Adherence",
-    "Resolution CSAT", "Agent Behaviour", "Quality", "PKT", "Hold KPI Score",
-    "Wrap KPI Score", "Auto-On KPI Score", "Schedule Adherence KPI Score",
-    "Resolution CSAT KPI Score", "Agent Behaviour KPI Score", "Quality KPI Score",
-    "PKT KPI Score", "Grand Total", "SL + UPL", "LOGINS",
-    "Target Committed for PKT", "Target Committed for CSAT (Agent Behaviour)",
-    "Target Committed for Quality"
-]
-
-DAY_HEADERS = [
-    "EMP ID", "Date", "NAME", "Call Count", "AHT", "Wrap", "Hold",
-    "CSAT Resolution", "CSAT Behaviour", "Auto On", "Week"
-]
-
-CSAT_HEADERS = [
-    "EMP ID", "NAME", "Week", "CSAT Resolution", "CSAT Behaviour"
-]
-
-# Load all data
-month_df = load_sheet_with_headers(SHEET_MONTH, MONTH_HEADERS)
-day_df = load_sheet_with_headers(SHEET_DAY, DAY_HEADERS)
-csat_df = load_sheet_with_headers(SHEET_CSAT, CSAT_HEADERS)
+# Load all data without expected headers
+month_df = safe_load_sheet(SHEET_MONTH)
+day_df = safe_load_sheet(SHEET_DAY)
+csat_df = safe_load_sheet(SHEET_CSAT)
 
 # ===== DATA VALIDATION =====
-def validate_data(df, df_name, required_cols):
-    errors = []
+def check_required_columns(df, df_name, required_cols):
+    missing = []
     for col in required_cols:
         if col not in df.columns:
-            errors.append(f"Missing column '{col}' in {df_name}")
-        elif df[col].isna().all():
-            errors.append(f"Column '{col}' in {df_name} has no data")
-    return errors
+            missing.append(col)
+    return missing
 
-validation_errors = []
-validation_errors.extend(validate_data(month_df, 'Month', ["EMP ID", "Month", "Grand Total"]))
-validation_errors.extend(validate_data(day_df, 'Day', ["EMP ID", "Call Count", "Date"]))
-validation_errors.extend(validate_data(csat_df, 'CSAT', ["EMP ID", "CSAT Resolution"]))
+# Check required columns for each sheet
+month_errors = check_required_columns(month_df, 'Month', 
+    ["EMP ID", "Month", "Grand Total"])
+day_errors = check_required_columns(day_df, 'Day', 
+    ["EMP ID", "Call Count", "Date"])
+csat_errors = check_required_columns(csat_df, 'CSAT', 
+    ["EMP ID", "CSAT Resolution"])
 
-if validation_errors:
+if month_errors or day_errors or csat_errors:
     st.error("Data validation failed:")
-    for error in validation_errors:
-        st.error(error)
+    if month_errors:
+        st.error(f"Missing in Month: {', '.join(month_errors)}")
+    if day_errors:
+        st.error(f"Missing in Day: {', '.join(day_errors)}")
+    if csat_errors:
+        st.error(f"Missing in CSAT: {', '.join(csat_errors)}")
     st.stop()
 
 # ===== DATA PROCESSING =====
 def process_data(df):
-    # Convert EMP IDs to strings
+    # Clean string columns
+    for col in df.columns:
+        if df[col].dtype == object:
+            df[col] = df[col].astype(str).str.strip()
+    
+    # Convert EMP ID to string
     if 'EMP ID' in df.columns:
         df['EMP ID'] = df['EMP ID'].astype(str).str.strip()
-    
-    # Convert percentages
-    pct_cols = [col for col in df.columns if 'CSAT' in col or 'KPI Score' in col or 'Quality' in col]
-    for col in pct_cols:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.replace('%', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce')
     
     # Convert dates
     if 'Date' in df.columns:
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+    
+    # Convert percentages
+    pct_cols = [col for col in df.columns if any(x in col for x in ['CSAT', 'KPI', 'Quality', 'PKT'])]
+    for col in pct_cols:
+        if col in df.columns:
+            df[col] = df[col].astype(str).str.replace('%', '').str.strip()
+            df[col] = pd.to_numeric(df[col], errors='coerce')
     
     return df
 
@@ -131,7 +125,7 @@ def get_weekly_top_performers():
     try:
         current_week = str(datetime.now().isocalendar()[1])
         week_day = day_df[day_df['Week'] == current_week]
-        week_csat = csat_df[csat_df['Week'] == current_week]
+        week_csat = csat_df[csat_df['Week'] == current_week] if 'Week' in csat_df.columns else pd.DataFrame()
         
         if week_day.empty:
             return pd.DataFrame()
@@ -270,61 +264,51 @@ if time_frame == "Day":
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">📞 Call Count</div>
-                    <div class="metric-value">{}</div>
+                    <div class="metric-value">{int(row['Call Count'])}</div>
                 </div>
-                """.format(int(row['Call Count'])), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
                 
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">⏱️ AHT</div>
-                    <div class="metric-value">{}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['AHT_sec']))).split('.')[0]}</div>
                 </div>
-                """.format(
-                    str(timedelta(seconds=int(row['AHT_sec']))).split('.')[0] if 'AHT_sec' in row else "N/A"
-                ), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
             with col2:
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🕒 Hold Time</div>
-                    <div class="metric-value">{}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Hold_sec']))).split('.')[0]}</div>
                 </div>
-                """.format(
-                    str(timedelta(seconds=int(row['Hold_sec']))).split('.')[0] if 'Hold_sec' in row else "N/A"
-                ), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
                 
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">📝 Wrap Time</div>
-                    <div class="metric-value">{}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Wrap_sec']))).split('.')[0]}</div>
                 </div>
-                """.format(
-                    str(timedelta(seconds=int(row['Wrap_sec']))).split('.')[0] if 'Wrap_sec' in row else "N/A"
-                ), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
             with col3:
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🤖 Auto On</div>
-                    <div class="metric-value">{}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Auto On_sec']))).split('.')[0]}</div>
                 </div>
-                """.format(
-                    str(timedelta(seconds=int(row['Auto On_sec']))).split('.')[0] if 'Auto On_sec' in row else "N/A"
-                ), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
                 
                 if 'CSAT Resolution' in row and 'CSAT Behaviour' in row:
-                    st.markdown("""
+                    st.markdown(f"""
                     <div class="metric-card">
                         <div class="metric-title">😊 CSAT Scores</div>
-                        <div>Resolution: {:.1f}%</div>
-                        <div>Behaviour: {:.1f}%</div>
+                        <div>Resolution: {float(row['CSAT Resolution']):.1f}%</div>
+                        <div>Behaviour: {float(row['CSAT Behaviour']):.1f}%</div>
                     </div>
-                    """.format(
-                        float(row['CSAT Resolution']), float(row['CSAT Behaviour'])
-                    ), unsafe_allow_html=True)
+                    """, unsafe_allow_html=True)
             
             # Performance comment
             if 'Call Count' in row:
@@ -394,16 +378,13 @@ elif time_frame == "Week":
             ]
             
             if not week_csat.empty:
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">😊 Weekly CSAT Averages</div>
-                    <div>Resolution: {:.1f}%</div>
-                    <div>Behaviour: {:.1f}%</div>
+                    <div>Resolution: {week_csat['CSAT Resolution'].mean():.1f}%</div>
+                    <div>Behaviour: {week_csat['CSAT Behaviour'].mean():.1f}%</div>
                 </div>
-                """.format(
-                    week_csat['CSAT Resolution'].mean(),
-                    week_csat['CSAT Behaviour'].mean()
-                ), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
             
             # Daily breakdown
             st.markdown("#### Daily Breakdown")
@@ -419,7 +400,6 @@ elif time_frame == "Week":
             for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
                 daily_breakdown[col] = daily_breakdown[col].apply(
                     lambda x: str(timedelta(seconds=int(x))).split('.')[0]
-                )
             
             st.dataframe(daily_breakdown, hide_index=True, use_container_width=True)
             
@@ -450,78 +430,84 @@ elif time_frame == "Month":
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                st.markdown("""
+                st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🏅 Grand Total KPI</div>
-                    <div class="metric-value">{:.1f}</div>
+                    <div class="metric-value">{float(row['Grand Total']):.1f}</div>
                 </div>
-                """.format(float(row['Grand Total'])), unsafe_allow_html=True)
+                """, unsafe_allow_html=True)
                 
-                st.markdown("""
-                <div class="metric-card">
-                    <div class="metric-title">⭐ Quality Score</div>
-                    <div class="metric-value">{:.1f}%</div>
-                </div>
-                """.format(float(row['Quality'])), unsafe_allow_html=True)
+                if 'Quality' in row:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-title">⭐ Quality Score</div>
+                        <div class="metric-value">{float(row['Quality']):.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             with col2:
-                st.markdown("""
-                <div class="metric-card">
-                    <div class="metric-title">😊 Resolution CSAT</div>
-                    <div class="metric-value">{:.1f}%</div>
-                </div>
-                """.format(float(row['Resolution CSAT'])), unsafe_allow_html=True)
+                if 'Resolution CSAT' in row:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-title">😊 Resolution CSAT</div>
+                        <div class="metric-value">{float(row['Resolution CSAT']):.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
-                st.markdown("""
-                <div class="metric-card">
-                    <div class="metric-title">👍 Agent Behaviour</div>
-                    <div class="metric-value">{:.1f}%</div>
-                </div>
-                """.format(float(row['Agent Behaviour'])), unsafe_allow_html=True)
+                if 'Agent Behaviour' in row:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-title">👍 Agent Behaviour</div>
+                        <div class="metric-value">{float(row['Agent Behaviour']):.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             with col3:
-                st.markdown("""
-                <div class="metric-card">
-                    <div class="metric-title">🧠 PKT Score</div>
-                    <div class="metric-value">{:.1f}%</div>
-                </div>
-                """.format(float(row['PKT'])), unsafe_allow_html=True)
+                if 'PKT' in row:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-title">🧠 PKT Score</div>
+                        <div class="metric-value">{float(row['PKT']):.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 
-                st.markdown("""
-                <div class="metric-card">
-                    <div class="metric-title">✅ Adherence</div>
-                    <div class="metric-value">{:.1f}%</div>
-                </div>
-                """.format(float(row['Schedule Adherence'])), unsafe_allow_html=True)
+                if 'Schedule Adherence' in row:
+                    st.markdown(f"""
+                    <div class="metric-card">
+                        <div class="metric-title">✅ Adherence</div>
+                        <div class="metric-value">{float(row['Schedule Adherence']):.1f}%</div>
+                    </div>
+                    """, unsafe_allow_html=True)
             
             # KPI Breakdown
             st.markdown("#### KPI Score Breakdown")
-            kpi_scores = pd.DataFrame({
-                "Metric": ["Hold", "Auto-On", "Adherence", "Resolution CSAT", "Agent Behaviour", "Quality", "PKT"],
-                "Weightage": ["0%", "30%", "10%", "10%", "20%", "20%", "10%"],
-                "Score": [
-                    row['Hold KPI Score'],
-                    row['Auto-On KPI Score'],
-                    row['Schedule Adherence KPI Score'],
-                    row['Resolution CSAT KPI Score'],
-                    row['Agent Behaviour KPI Score'],
-                    row['Quality KPI Score'],
-                    row['PKT KPI Score']
-                ]
-            })
-            st.dataframe(kpi_scores, hide_index=True, use_container_width=True)
+            kpi_data = []
+            for kpi in ['Hold', 'Auto-On', 'Schedule Adherence', 'Resolution CSAT', 
+                       'Agent Behaviour', 'Quality', 'PKT']:
+                score_col = f"{kpi} KPI Score"
+                if score_col in row:
+                    kpi_data.append({
+                        "Metric": kpi,
+                        "Score": float(row[score_col])
+                    })
             
-            # Targets for next month
-            st.markdown("#### Targets for Next Month")
-            targets = pd.DataFrame({
-                "Metric": ["PKT", "CSAT (Agent Behaviour)", "Quality"],
-                "Target": [
-                    row['Target Committed for PKT'],
-                    row['Target Committed for CSAT (Agent Behaviour)'],
-                    row['Target Committed for Quality']
-                ]
-            })
-            st.dataframe(targets, hide_index=True, use_container_width=True)
+            if kpi_data:
+                st.dataframe(pd.DataFrame(kpi_data), hide_index=True, use_container_width=True)
+            
+            # Targets for next month (if available)
+            target_data = []
+            for target in ['Target Committed for PKT', 
+                          'Target Committed for CSAT (Agent Behaviour)',
+                          'Target Committed for Quality']:
+                if target in row:
+                    target_data.append({
+                        "Target": target.replace('Target Committed for ', ''),
+                        "Value": row[target]
+                    })
+            
+            if target_data:
+                st.markdown("#### Targets for Next Month")
+                st.dataframe(pd.DataFrame(target_data), hide_index=True, use_container_width=True)
             
             # Month comparison
             month_index = available_months.index(selected_month)
@@ -532,9 +518,10 @@ elif time_frame == "Month":
                     (month_df['Month'] == prev_month)
                 ]
                 
-                if not prev_data.empty:
-                    prev_row = prev_data.iloc[0]
-                    diff = float(row['Grand Total']) - float(prev_row['Grand Total'])
+                if not prev_data.empty and 'Grand Total' in prev_data.columns:
+                    prev_score = float(prev_data.iloc[0]['Grand Total'])
+                    current_score = float(row['Grand Total'])
+                    diff = current_score - prev_score
                     
                     if diff > 0:
                         st.success(f"📈 Improved by +{diff:.1f} points from {prev_month}")
