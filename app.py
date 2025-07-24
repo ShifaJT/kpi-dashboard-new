@@ -25,15 +25,41 @@ def get_gspread_client():
 
 client = get_gspread_client()
 
-# === DATA LOADING WITH ERROR HANDLING ===
+# === IMPROVED DATA LOADING WITH DUPLICATE HEADER HANDLING ===
 @st.cache_data(ttl=3600)
 def load_sheet(name):
     try:
         sheet = client.open_by_key(SHEET_ID)
         worksheet = sheet.worksheet(name)
-        records = worksheet.get_all_records()
-        df = pd.DataFrame(records)
-        df.columns = df.columns.str.strip()
+        
+        # First get all data as list of lists
+        all_data = worksheet.get_all_values()
+        
+        # Process headers to handle duplicates
+        original_headers = all_data[0]
+        cleaned_headers = []
+        header_counts = {}
+        
+        for header in original_headers:
+            header = header.strip()
+            if not header:
+                header = "Unnamed"
+                
+            # Handle duplicate headers
+            if header in header_counts:
+                header_counts[header] += 1
+                header = f"{header}_{header_counts[header]}"
+            else:
+                header_counts[header] = 1
+                
+            cleaned_headers.append(header)
+        
+        # Create DataFrame with cleaned headers
+        if len(all_data) > 1:
+            df = pd.DataFrame(all_data[1:], columns=cleaned_headers)
+        else:
+            df = pd.DataFrame(columns=cleaned_headers)
+        
         return df
     except Exception as e:
         st.error(f"Error loading {name}: {str(e)}")
@@ -89,7 +115,6 @@ time_frame = st.radio("Select Timeframe:", ["Day", "Week", "Month"], horizontal=
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
     
-    # Get available months
     if not month_df.empty:
         available_months = sorted(month_df['Month'].unique())
         selected_month = st.selectbox("Select Month", available_months)
@@ -106,58 +131,35 @@ if time_frame == "Month":
                 row = monthly_data.iloc[0]
                 st.subheader(f"Performance for {row['NAME']} - {selected_month}")
                 
-                # Display Performance Metrics
+                # Display KPIs
                 cols = st.columns(4)
-                performance_metrics = [
-                    ("📞 Login Days", f"{row.get('LOGINS', 'N/A')} days"),
-                    ("📊 SL + UPL", row.get('SL + UPL', 'N/A')),
-                    ("⏱️ Avg Hold", row.get('Hold', 'N/A')),
-                    ("📝 Avg Wrap", row.get('Wrap', 'N/A')),
-                    ("🤖 Auto-On", row.get('Auto-On', 'N/A')),
-                    ("📅 Schedule Adh.", row.get('Schedule Adherence', 'N/A')),
+                metrics = [
+                    ("📞 Call Volume", f"{row.get('LOGINS', 'N/A')} days"),
+                    ("⏱️ Avg Hold", f"{row.get('Hold', 'N/A')}"),
+                    ("📝 Avg Wrap", f"{row.get('Wrap', 'N/A')}"),
+                    ("🤖 Auto-On", f"{row.get('Auto-On', 'N/A')}"),
                     ("😊 CSAT Res", f"{row.get('Resolution CSAT', 'N/A')}%"),
                     ("👍 CSAT Beh", f"{row.get('Agent Behaviour', 'N/A')}%"),
-                    ("✅ Quality", f"{row.get('Quality', 'N/A')}%"),
+                    ("⭐ Quality", f"{row.get('Quality', 'N/A')}%"),
                     ("🧠 PKT", f"{row.get('PKT', 'N/A')}%")
                 ]
                 
-                for i, (label, value) in enumerate(performance_metrics):
-                    cols[i % 4].metric(label, value)
+                for i, (label, value) in enumerate(metrics):
+                    cols[i%4].metric(label, value)
                 
-                st.markdown("---")
-                st.subheader("📈 KPI Score Breakdown")
+                # Show score
+                st.progress(row['Grand Total']/5)
+                st.metric("Overall Score", f"{row['Grand Total']}/5.0")
                 
-                # Display KPI Scores
-                kpi_scores = [
-                    ("Hold KPI Score", row.get('Hold KPI Score', 'N/A')),
-                    ("Wrap KPI Score", row.get('Wrap KPI Score', 'N/A')),
-                    ("Auto-On KPI Score", row.get('Auto-On KPI Score', 'N/A')),
-                    ("Schedule Adherence KPI Score", row.get('Schedule Adherence KPI Score', 'N/A')),
-                    ("CSAT Res KPI Score", row.get('Resolution CSAT KPI Score', 'N/A')),
-                    ("CSAT Beh KPI Score", row.get('Agent Behaviour KPI Score', 'N/A')),
-                    ("Quality KPI Score", row.get('Quality KPI Score', 'N/A')),
-                    ("PKT KPI Score", row.get('PKT KPI Score', 'N/A'))
-                ]
-                
-                cols_kpi = st.columns(4)
-                for i, (label, value) in enumerate(kpi_scores):
-                    cols_kpi[i % 4].metric(label, value)
-
-                st.markdown("---")
-                
-                # Show Grand Total Score
-                st.progress(row['Grand Total'] / 5)
-                st.metric("🎯 Overall Score", f"{row['Grand Total']}/5.0")
-                
-                # Show Targets
-                with st.expander("🎯 View Targets"):
+                # Show targets
+                with st.expander("View Targets"):
                     targets = [
                         ("PKT Target", row.get('Target Committed for PKT', 'N/A')),
                         ("CSAT Target", row.get('Target Committed for CSAT (Agent Behaviour)', 'N/A')),
                         ("Quality Target", row.get('Target Committed for Quality', 'N/A'))
                     ]
                     for target in targets:
-                        st.write(f"✅ **{target[0]}**: {target[1]}")
+                        st.write(f"{target[0]}: {target[1]}")
             else:
                 st.warning("No data found for this employee/month")
 
@@ -188,13 +190,12 @@ elif time_frame == "Week":
             if not week_calls.empty:
                 # Calculate metrics
                 metrics = {
-    "📞 Total Calls": int(week_calls["Call Count"].sum()),
-    "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean())))[:-3],
-    "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3],
-    "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3],
-    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]
-}
-
+                    "📞 Total Calls": int(week_calls["Call Count"].sum()),
+                    "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean())))[:-3],
+                    "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3],
+                    "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3],
+                    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]
+                }
                 
                 # Add CSAT if available
                 if not week_csat.empty:
@@ -205,8 +206,9 @@ elif time_frame == "Week":
                 
                 # Display
                 st.subheader(f"Week {selected_week} Performance")
-                for metric, value in metrics.items():
-                    st.metric(metric, value)
+                cols = st.columns(3)
+                for i, (metric, value) in enumerate(metrics.items()):
+                    cols[i%3].metric(metric, value)
                 
                 # Show daily breakdown
                 with st.expander("Daily Breakdown"):
@@ -220,7 +222,7 @@ elif time_frame == "Week":
                     
                     # Format time columns
                     for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
-                        daily_data[col] = daily_data[col].apply(lambda x: str(timedelta(seconds=int(x)))[:-3])
+                        daily_data[col] = daily_data[col].apply(lambda x: str(timedelta(seconds=int(x)))[:-3]
                     
                     st.dataframe(daily_data)
             else:
@@ -231,14 +233,8 @@ else:
     st.subheader("📅 Daily Performance")
     
     if not day_df.empty:
-        # Make sure Date column is datetime
-        if not pd.api.types.is_datetime64_any_dtype(day_df['Date']):
-            day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
-        
-        # Get unique available dates
-        available_dates = sorted(day_df['Date'].dropna().unique())
-        
         # Show date selector first
+        available_dates = sorted(day_df['Date'].dropna().unique())
         selected_date = st.selectbox("Select Date", available_dates, key="day_date_select")
         
         # Then show EMP ID input
@@ -253,7 +249,7 @@ else:
             
             if not daily_data.empty:
                 row = daily_data.iloc[0]
-                st.subheader(f"Performance for {row['NAME']} on {selected_date.strftime('%Y-%m-%d')}")
+                st.subheader(f"Performance for {row['NAME']} on {selected_date}")
                 
                 # Format time
                 def format_time(seconds):
@@ -261,29 +257,26 @@ else:
                 
                 # Prepare metrics
                 metrics = [
-                    ("📞 Call Count", row.get('Call Count', 0)),
+                    ("📞 Calls", row.get('Call Count', 0)),
                     ("⏱️ AHT", format_time(row.get('AHT_sec', 0))),
-                    ("📝 Wrap", format_time(row.get('Wrap_sec', 0))),
                     ("🕒 Hold", format_time(row.get('Hold_sec', 0))),
+                    ("📝 Wrap", format_time(row.get('Wrap_sec', 0))),
                     ("🤖 Auto On", format_time(row.get('Auto On_sec', 0))),
-                    ("😊 CSAT Resolution", f"{row.get('CSAT Resolution', 0)}%"),
-                    ("👍 CSAT Behaviour", f"{row.get('CSAT Behaviour', 0)}%")
+                    ("😊 CSAT Res", f"{row.get('CSAT Resolution', 0)}%"),
+                    ("👍 CSAT Beh", f"{row.get('CSAT Behaviour', 0)}%")
                 ]
                 
-                # Display metrics in columns
+                # Display metrics
                 cols = st.columns(4)
                 for i, (label, value) in enumerate(metrics):
-                    cols[i % 4].metric(label, value)
-
-                # Performance Comment
-                call_count = row.get('Call Count', 0)
-                if call_count > 50:
-                    st.success("🔥 Excellent call volume today!")
-                elif call_count > 30:
-                    st.info("✅ Good performance today.")
+                    cols[i%4].metric(label, value)
+                
+                # Performance comment
+                if row['Call Count'] > 50:
+                    st.success("Excellent call volume today!")
+                elif row['Call Count'] > 30:
+                    st.info("Good performance today")
                 else:
-                    st.warning("📈 Let's aim for more calls tomorrow.")
+                    st.warning("Let's aim for more calls tomorrow")
             else:
-                st.warning("No data found for this employee/date.")
-    else:
-        st.warning("No daily performance data available.")
+                st.warning("No data found for this employee/date")
