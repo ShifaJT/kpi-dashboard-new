@@ -251,7 +251,84 @@ elif time_frame == "Week":
                 st.error(f"Error processing weekly data: {str(e)}")
     else:
         st.warning("Weekly data not loaded properly")
-
+elif time_frame == "Week":
+    st.subheader("📅 Weekly Performance")
+    
+    if not day_df.empty and not csat_df.empty:
+        # Get available weeks from both dataframes
+        day_weeks = day_df['Week'].dropna().unique()
+        csat_weeks = csat_df['Week'].dropna().unique()
+        all_weeks = sorted(set(day_weeks) | set(csat_weeks))
+        
+        selected_week = st.selectbox("Select Week", all_weeks, key="week_select")
+        emp_id = st.text_input("Enter Employee ID", key="week_emp_id")
+        
+        if emp_id and selected_week:
+            try:
+                # Get weekly call data - exact week match
+                week_calls = day_df[
+                    (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                    (day_df["Week"].astype(str).str.strip() == str(selected_week).strip())
+                ].copy()
+                
+                # Clean numeric columns
+                week_calls['Call Count'] = week_calls['Call Count'].astype(str).str.replace(',', '').astype(float)
+                
+                # Get weekly CSAT
+                week_csat = csat_df[
+                    (csat_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                    (csat_df["Week"].astype(str).str.strip() == str(selected_week).strip())
+                ]
+                
+                if not week_calls.empty:
+                    # Calculate metrics with proper formatting
+                    total_calls = int(week_calls["Call Count"].sum())
+                    
+                    def format_avg_time(col):
+                        avg_sec = week_calls[f"{col}_sec"].mean()
+                        return str(timedelta(seconds=int(avg_sec))[2:7]  # MM:SS format
+                    
+                    # Display metrics
+                    st.subheader(f"Week {selected_week} Performance")
+                    
+                    # Call Metrics
+                    st.markdown("### 📞 Call Metrics")
+                    cols = st.columns(5)
+                    call_metrics = [
+                        ("Total Calls", f"{total_calls:,}"),
+                        ("Avg AHT", format_avg_time('AHT')),
+                        ("Avg Hold", format_avg_time('Hold')),
+                        ("Avg Wrap", format_avg_time('Wrap')),
+                        ("Avg Auto On", format_avg_time('Auto On'))
+                    ]
+                    
+                    for i, (label, value) in enumerate(call_metrics):
+                        cols[i].metric(label, value)
+                    
+                    # CSAT Metrics if available
+                    if not week_csat.empty:
+                        st.markdown("### 😊 CSAT Metrics")
+                        csat_cols = st.columns(2)
+                        csat_res = week_csat['CSAT Resolution'].mean()
+                        csat_beh = week_csat['CSAT Behaviour'].mean()
+                        csat_metrics = [
+                            ("CSAT Resolution", f"{csat_res:.1f}%"),
+                            ("CSAT Behaviour", f"{csat_beh:.1f}%")
+                        ]
+                        for i, (label, value) in enumerate(csat_metrics):
+                            csat_cols[i].metric(label, value)
+                    
+                    # Daily Breakdown
+                    with st.expander("📅 View Daily Breakdown"):
+                        daily_data = week_calls[['Date', 'Call Count', 'AHT', 'Hold', 'Wrap', 'Auto On']].copy()
+                        st.dataframe(daily_data)
+                else:
+                    st.warning("No call data found for this employee/week")
+            except Exception as e:
+                st.error(f"Error processing weekly data: {str(e)}")
+    else:
+        st.warning("Weekly data not loaded properly")
+        
 # === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
