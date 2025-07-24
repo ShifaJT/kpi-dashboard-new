@@ -6,12 +6,23 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import numpy as np
 
+# Helper functions to clean values
+def clean_value(val):
+    if pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
+        return 'N/A'
+    return str(val).replace('%', '').strip()
+
+def clean_percentage(val):
+    cleaned = clean_value(val)
+    return f"{cleaned}%" if cleaned != 'N/A' else 'N/A'
+
 # === CONFIGURATION ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
 SHEET_MONTH = "KPI Month"
 SHEET_DAY = "KPI Day"
 SHEET_CSAT = "CSAT Score"
 
+# [Rest of your code remains exactly the same...]
 # === GOOGLE SHEETS AUTHENTICATION ===
 @st.cache_resource
 def get_gspread_client():
