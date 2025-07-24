@@ -110,30 +110,30 @@ time_frame = st.radio("Select Timeframe:", ["Day", "Week", "Month"], horizontal=
 
 # === MONTH VIEW ===
 if time_frame == "Month":
-    st.subheader("📅 Monthly Performance")
-    
+    st.subheader("\U0001F4C5 Monthly Performance")
+
     if not month_df.empty:
         month_df['Month'] = month_df['Month'].astype(str).str.strip()
         month_names = sorted(month_df['Month'].unique())
-        
+
         if len(month_names) == 0:
             st.error("No months found in the data. Please check your 'KPI Month' sheet.")
         else:
             selected_month = st.selectbox("Select Month", month_names)
             emp_id = st.text_input("Enter Employee ID", key="month_emp_id")
-            
+
             if emp_id and selected_month:
                 try:
                     monthly_data = month_df[
-                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
                         (month_df['Month'].str.strip() == selected_month.strip())
                     ]
-                    
+
                     if not monthly_data.empty:
                         row = monthly_data.iloc[0]
                         st.subheader(f"Performance for {row['NAME']} - {selected_month}")
-                        
-                        st.markdown("### 📊 Performance Metrics")
+
+                        st.markdown("### \U0001F4CA Performance Metrics")
                         cols = st.columns(4)
                         metrics = [
                             ("⏱️ Hold Time", clean_value(row.get('Hold'))),
@@ -148,9 +148,9 @@ if time_frame == "Month":
                             ("📞 Logins", clean_value(row.get('LOGINS')))
                         ]
                         for i, (label, value) in enumerate(metrics):
-                            cols[i%4].metric(label, value)
-                        
-                        st.markdown("### 🎯 KPI Scores")
+                            cols[i % 4].metric(label, value)
+
+                        st.markdown("### \U0001F3AF KPI Scores")
                         kpi_cols = st.columns(4)
                         kpi_metrics = [
                             ("Hold KPI Score", clean_value(row.get('Hold KPI Score'))),
@@ -163,46 +163,45 @@ if time_frame == "Month":
                             ("PKT KPI Score", clean_value(row.get('PKT KPI Score')))
                         ]
                         for i, (label, value) in enumerate(kpi_metrics):
-                            kpi_cols[i%4].metric(label, value)
-                        
+                            kpi_cols[i % 4].metric(label, value)
+
                         if 'Grand Total' in row:
                             current_score = float(row['Grand Total'])
-                            st.markdown("### 📈 Overall KPI Score")
+                            st.markdown("### \U0001F4C8 Overall KPI Score")
                             try:
                                 month_index = month_names.index(selected_month)
                                 if month_index > 0:
-                                    prev_month = month_names[month_index-1]
+                                    prev_month = month_names[month_index - 1]
                                     prev_data = month_df[
-                                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
                                         (month_df['Month'].str.strip() == prev_month.strip())
                                     ]
                                     if not prev_data.empty:
                                         prev_score = float(prev_data.iloc[0]['Grand Total'])
                                         delta = current_score - prev_score
-                                        delta_label = f"{'↑' if delta >=0 else '↓'} {abs(delta):.1f}"
+                                        delta_label = f"{'↑' if delta >= 0 else '↓'} {abs(delta):.1f}"
                                     else:
                                         delta = None
                                 else:
                                     delta = None
                             except:
                                 delta = None
-                            if delta is not None:
-    st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
-    
-    # Sentence about improvement or drop
-    if delta > 0:
-        st.markdown(f"🔺 **{abs(delta):.1f} improved from last month.**")
-        st.success("Keep up the great work and continue the momentum! 💪")
-    elif delta < 0:
-        st.markdown(f"🔻 **{abs(delta):.1f} dropped from last month.**")
-        st.warning("Let's focus on areas of improvement and bounce back stronger! 🚀")
-else:
-    st.metric("Overall Score", f"{current_score:.1f}/5.0")
-    st.info("No data from the previous month to compare.")
 
-                            st.progress(current_score/5)
-                        
-                        st.markdown("### 🎯 Targets Committed")
+                            if delta is not None:
+                                st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
+                                if delta > 0:
+                                    st.markdown(f"🔺 **{abs(delta):.1f} improved from last month.**")
+                                    st.success("Keep up the great work and continue the momentum! 💪")
+                                elif delta < 0:
+                                    st.markdown(f"🔻 **{abs(delta):.1f} dropped from last month.**")
+                                    st.warning("Let's focus on areas of improvement and bounce back stronger! 🚀")
+                            else:
+                                st.metric("Overall Score", f"{current_score:.1f}/5.0")
+                                st.info("No data from the previous month to compare.")
+
+                            st.progress(current_score / 5)
+
+                        st.markdown("### \U0001F3AF Targets Committed")
                         target_cols = st.columns(3)
                         targets = [
                             ("PKT Target", clean_value(row.get('Target Committed for PKT'))),
@@ -211,6 +210,7 @@ else:
                         ]
                         for i, (label, value) in enumerate(targets):
                             target_cols[i].metric(label, value)
+
                     else:
                         st.warning("No data found for this employee/month")
                 except Exception as e:
