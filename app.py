@@ -129,8 +129,11 @@ month_df = normalize_data(month_df)
 
 # Add week numbers to day data if not present
 if 'Week' not in day_df.columns and 'Date' in day_df.columns:
-    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
-    day_df['Week'] = day_df['Date'].dt.isocalendar().week.astype(str)
+    try:
+        day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
+        day_df['Week'] = day_df['Date'].dt.isocalendar().week.astype(str)
+    except Exception as e:
+        st.error(f"Error processing dates: {str(e)}")
 
 # === FIXED TOP PERFORMERS CALCULATION ===
 def get_weekly_top_performers(target_week=None):
@@ -341,50 +344,71 @@ if time_frame == "Week":
 elif time_frame == "Day":
     emp_id = st.text_input("🔢 Enter EMP ID")
     
-    available_dates = sorted(day_df['Date'].unique())
-    date_display = [date.strftime('%Y-%m-%d') for date in available_dates]
-    selected_date_str = st.selectbox("📅 Select Date", date_display)
-    
-    if emp_id and selected_date_str:
-        selected_date = datetime.strptime(selected_date_str, '%Y-%m-%d').date()
-        daily_data = day_df[
-            (day_df["EMP ID"].str.strip() == emp_id.strip()) & 
-            (day_df["Date"] == selected_date)
-        ]
-        
-        if not daily_data.empty:
-            row = daily_data.iloc[0]
-            emp_name = row['NAME']
-            st.markdown(f"### 📊 Daily KPI Data for **{emp_name}** | Date: {selected_date_str}")
-
-            def format_time(time_val):
-                if pd.isna(time_val):
-                    return "00:00:00"
-                if isinstance(time_val, str) and ':' in time_val:
-                    return time_val.split('.')[0]
-                return str(timedelta(seconds=convert_time_to_seconds(time_val))).split('.')[0]
-
-            metrics = [
-                ("📞 Call Count", f"{int(row['Call Count'])}"),
-                ("⏱️ AHT", format_time(row["AHT"])),
-                ("🕒 Hold", format_time(row["Hold"])),
-                ("📝 Wrap", format_time(row["Wrap"])),
-                ("🤖 Auto On", format_time(row["Auto On"])),
-                ("✅ CSAT Resolution", f"{row['CSAT Resolution']}%"),
-                ("👍 CSAT Behaviour", f"{row['CSAT Behaviour']}%"),
-            ]
-
-            daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
-            st.dataframe(daily_df, use_container_width=True, hide_index=True)
-            
-            if row["Call Count"] > 50:
-                st.success("🎯 Excellent call volume today!")
-            elif row["Call Count"] > 30:
-                st.info("👍 Solid performance today!")
-            else:
-                st.warning("💪 Keep pushing - tomorrow is another opportunity!")
+    # Safely get available dates
+    try:
+        if 'Date' in day_df.columns:
+            # Convert to datetime if not already
+            day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
+            # Drop NaT values
+            day_df = day_df.dropna(subset=['Date'])
+            available_dates = sorted(day_df['Date'].unique())
+            date_display = [date.strftime('%Y-%m-%d') for date in available_dates]
         else:
-            st.info("📭 No data found for that EMP ID and date.")
+            available_dates = []
+            date_display = []
+    except Exception as e:
+        st.error(f"Error processing dates: {str(e)}")
+        available_dates = []
+        date_display = []
+    
+    if date_display:
+        selected_date_str = st.selectbox("📅 Select Date", date_display)
+        
+        if emp_id and selected_date_str:
+            try:
+                selected_date = pd.to_datetime(selected_date_str).date()
+                daily_data = day_df[
+                    (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                    (day_df["Date"].dt.date == selected_date)
+                ]
+                
+                if not daily_data.empty:
+                    row = daily_data.iloc[0]
+                    emp_name = row['NAME']
+                    st.markdown(f"### 📊 Daily KPI Data for **{emp_name}** | Date: {selected_date_str}")
+
+                    def format_time(time_val):
+                        if pd.isna(time_val):
+                            return "00:00:00"
+                        if isinstance(time_val, str) and ':' in time_val:
+                            return time_val.split('.')[0]
+                        return str(timedelta(seconds=convert_time_to_seconds(time_val))).split('.')[0]
+
+                    metrics = [
+                        ("📞 Call Count", f"{int(row['Call Count'])}"),
+                        ("⏱️ AHT", format_time(row["AHT"])),
+                        ("🕒 Hold", format_time(row["Hold"])),
+                        ("📝 Wrap", format_time(row["Wrap"])),
+                        ("🤖 Auto On", format_time(row["Auto On"])),
+                        ("✅ CSAT Resolution", f"{row['CSAT Resolution']}%"),
+                        ("👍 CSAT Behaviour", f"{row['CSAT Behaviour']}%"),
+                    ]
+
+                    daily_df = pd.DataFrame(metrics, columns=["Metric", "Value"])
+                    st.dataframe(daily_df, use_container_width=True, hide_index=True)
+                    
+                    if row["Call Count"] > 50:
+                        st.success("🎯 Excellent call volume today!")
+                    elif row["Call Count"] > 30:
+                        st.info("👍 Solid performance today!")
+                    else:
+                        st.warning("💪 Keep pushing - tomorrow is another opportunity!")
+                else:
+                    st.info("📭 No data found for that EMP ID and date.")
+            except Exception as e:
+                st.error(f"Error displaying day data: {str(e)}")
+    else:
+        st.warning("No date data available")
 
 # === MONTH VIEW ===
 elif time_frame == "Month":
@@ -443,40 +467,43 @@ elif time_frame == "Month":
             st.dataframe(pd.DataFrame(kpi_table), use_container_width=True, hide_index=True)
 
             st.subheader("🏅 Grand Total")
-            current_score = emp_data['Grand Total'].values[0]
-            st.metric("Grand Total KPI", f"{current_score}")
+            try:
+                current_score = float(emp_data['Grand Total'].values[0])
+                st.metric("Grand Total KPI", f"{current_score:.1f}")
 
-            if lottie_cheer:
-                st_lottie(lottie_cheer, speed=1, height=200, key="cheer")
+                if lottie_cheer:
+                    st_lottie(lottie_cheer, speed=1, height=200, key="cheer")
 
-            if current_score >= 4.5:
-                st.success("🎉 Incredible! You're setting new standards!")
-            elif current_score >= 4.0:
-                st.info("🌟 Great work! Let's aim for the top.")
-            elif current_score >= 3.0:
-                st.warning("💪 You're doing good! Let's level up next month.")
-            elif current_score >= 2.0:
-                st.warning("📈 Progress in motion. Consistency is key!")
-            else:
-                st.error("🔥 Don't give up. Big wins come from small efforts.")
-
-            current_index = available_months.index(month)
-            if current_index > 0:
-                previous_month = available_months[current_index - 1]
-                prev_data = df[(df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & (df["Month"] == previous_month)]
-
-                if not prev_data.empty:
-                    prev_score = prev_data["Grand Total"].values[0]
-                    diff = round(current_score - prev_score, 2)
-
-                    if diff > 0:
-                        st.success(f"📈 You improved by +{diff} points since last month ({previous_month})!")
-                    elif diff < 0:
-                        st.warning(f"📉 You dropped by {abs(diff)} points since last month ({previous_month}). Let's bounce back!")
-                    else:
-                        st.info(f"➖ No change from last month ({previous_month}). Keep the momentum going.")
+                if current_score >= 4.5:
+                    st.success("🎉 Incredible! You're setting new standards!")
+                elif current_score >= 4.0:
+                    st.info("🌟 Great work! Let's aim for the top.")
+                elif current_score >= 3.0:
+                    st.warning("💪 You're doing good! Let's level up next month.")
+                elif current_score >= 2.0:
+                    st.warning("📈 Progress in motion. Consistency is key!")
                 else:
-                    st.info("📭 No data found for previous month.")
+                    st.error("🔥 Don't give up. Big wins come from small efforts.")
+
+                current_index = available_months.index(month)
+                if current_index > 0:
+                    previous_month = available_months[current_index - 1]
+                    prev_data = df[(df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & (df["Month"] == previous_month)]
+
+                    if not prev_data.empty:
+                        prev_score = float(prev_data["Grand Total"].values[0])
+                        diff = round(current_score - prev_score, 2)
+
+                        if diff > 0:
+                            st.success(f"📈 You improved by +{diff} points since last month ({previous_month})!")
+                        elif diff < 0:
+                            st.warning(f"📉 You dropped by {abs(diff)} points since last month ({previous_month}). Let's bounce back!")
+                        else:
+                            st.info(f"➖ No change from last month ({previous_month}). Keep the momentum going.")
+                    else:
+                        st.info("📭 No data found for previous month.")
+            except Exception as e:
+                st.error(f"Error processing Grand Total score: {str(e)}")
 
             st.subheader("🎯 Target Committed for Next Month")
             target_cols = [
@@ -488,7 +515,11 @@ elif time_frame == "Month":
             target_data = []
             for col in target_cols:
                 if col in emp_data.columns:
-                    target_data.append({"Target Metric": col, "Target": emp_data[col].values[0]})
+                    target_value = emp_data[col].values[0]
+                    # Handle case where target might be a percentage string
+                    if isinstance(target_value, str) and '%' in target_value:
+                        target_value = target_value.replace('%', '').strip()
+                    target_data.append({"Target Metric": col, "Target": target_value})
                 else:
                     target_data.append({"Target Metric": col, "Target": "N/A"})
             
