@@ -163,62 +163,49 @@ if time_frame == "Month":
             else:
                 st.warning("No data found for this employee/month")
 
-# === WEEK VIEW ===
-# === WEEK VIEW ===
-elif time_frame == "Week":
+# === WEEK VIEW ===elif time_frame == "Week":
     st.subheader("📅 Weekly Performance")
     
-    # First show week selector
     if not day_df.empty and not csat_df.empty:
-        # Get available weeks from both dataframes
         day_weeks = day_df['Week'].dropna().unique()
         csat_weeks = csat_df['Week'].dropna().unique()
         all_weeks = sorted(set(day_weeks) | set(csat_weeks))
         
-        # Show week selector at the top
         selected_week = st.selectbox("Select Week", all_weeks, key="week_select")
-        
-        # Then show EMP ID input below
         emp_id = st.text_input("Enter Employee ID", key="week_emp_id")
         
         if emp_id and selected_week:
             try:
-                # Get weekly call data
                 week_calls = day_df[
                     (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
                     (day_df["Week"] == selected_week)
                 ]
                 
-                # Get weekly CSAT
                 week_csat = csat_df[
-                    (csat_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                    (csat_df["EMP ID"].ast(str).str.strip() == emp_id.strip()) & 
                     (csat_df["Week"] == selected_week)
                 ]
                 
                 if not week_calls.empty:
-                    # Calculate metrics
                     metrics = {
-    "📞 Total Calls": int(week_calls["Call Count"].sum()),
-    "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean()))[:-3],  # Fixed
-    "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3],  # Fixed
-    "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3],  # Fixed
-    "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]  # Fixed
-}
+                        "📞 Total Calls": int(week_calls["Call Count"].sum()),
+                        "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean())))[:-3],
+                        "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3],
+                        "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3],
+                        "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]
+                    }
                     
-                    # Add CSAT if available
                     if not week_csat.empty:
                         metrics.update({
                             "😊 CSAT Resolution": f"{week_csat['CSAT Resolution'].mean():.1f}%",
                             "👍 CSAT Behaviour": f"{week_csat['CSAT Behaviour'].mean():.1f}%"
                         })
                     
-                    # Display metrics in columns
                     st.subheader(f"Week {selected_week} Performance")
                     cols = st.columns(3)
                     for i, (metric, value) in enumerate(metrics.items()):
                         cols[i%3].metric(metric, value)
                     
-                    # Show daily breakdown
                     with st.expander("View Daily Breakdown"):
                         daily_data = week_calls.groupby('Date').agg({
                             'Call Count': 'sum',
@@ -228,7 +215,6 @@ elif time_frame == "Week":
                             'Auto On_sec': 'mean'
                         }).reset_index()
                         
-                        # Format time columns
                         for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
                             daily_data[col] = daily_data[col].apply(lambda x: str(timedelta(seconds=int(x)))[:-3])
                         
