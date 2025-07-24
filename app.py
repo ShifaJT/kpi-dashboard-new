@@ -165,9 +165,9 @@ def get_weekly_top_performers():
         )
         
         # Format for display
-        metrics['Hold'] = metrics['Hold_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
-        metrics['Wrap'] = metrics['Wrap_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
-        metrics['Auto On'] = metrics['Auto On_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
+        metrics['Hold'] = metrics['Hold_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
+        metrics['Wrap'] = metrics['Wrap_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
+        metrics['Auto On'] = metrics['Auto On_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
         metrics['CSAT Beh'] = metrics['CSAT Behaviour'].apply(lambda x: f"{x:.1f}%")
         metrics['CSAT Res'] = metrics['CSAT Resolution'].apply(lambda x: f"{x:.1f}%")
         
@@ -274,7 +274,7 @@ if time_frame == "Day":
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">⏱️ AHT</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['AHT_sec']))).split('.')[0]}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['AHT_sec']))}</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -282,14 +282,14 @@ if time_frame == "Day":
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🕒 Hold Time</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['Hold_sec']))).split('.')[0]}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Hold_sec']))}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">📝 Wrap Time</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['Wrap_sec']))).split('.')[0]}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Wrap_sec']))}</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -297,7 +297,7 @@ if time_frame == "Day":
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🤖 Auto On</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['Auto On_sec']))).split('.')[0]}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Auto On_sec'])))}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
@@ -344,10 +344,10 @@ elif time_frame == "Week":
             # Calculate weekly aggregates
             agg_data = {
                 "📞 Total Calls": int(week_data['Call Count'].sum()),
-                "⏱️ Avg AHT": str(timedelta(seconds=int(week_data['AHT_sec'].mean()))).split('.')[0],
-                "🕒 Avg Hold": str(timedelta(seconds=int(week_data['Hold_sec'].mean()))).split('.')[0],
-                "📝 Avg Wrap": str(timedelta(seconds=int(week_data['Wrap_sec'].mean()))).split('.')[0],
-                "🤖 Avg Auto On": str(timedelta(seconds=int(week_data['Auto On_sec'].mean()))).split('.')[0]
+                "⏱️ Avg AHT": str(timedelta(seconds=int(week_data['AHT_sec'].mean()))),
+                "🕒 Avg Hold": str(timedelta(seconds=int(week_data['Hold_sec'].mean()))),
+                "📝 Avg Wrap": str(timedelta(seconds=int(week_data['Wrap_sec'].mean()))),
+                "🤖 Avg Auto On": str(timedelta(seconds=int(week_data['Auto On_sec'].mean())))
             }
             
             # Display metrics
@@ -399,12 +399,13 @@ elif time_frame == "Week":
             # Format time columns
             for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
                 daily_breakdown[col] = daily_breakdown[col].apply(
-                    lambda x: str(timedelta(seconds=int(x))).split('.')[0]
+                    lambda x: str(timedelta(seconds=int(x)))
+                )
             
             st.dataframe(daily_breakdown, hide_index=True, use_container_width=True)
             
         else:
-            st.warning("No data found for this EMP ID and week"))
+            st.warning("No data found for this EMP ID and week")
 
 # ===== MONTH VIEW =====
 elif time_frame == "Month":
@@ -494,7 +495,7 @@ elif time_frame == "Month":
             if kpi_data:
                 st.dataframe(pd.DataFrame(kpi_data), hide_index=True, use_container_width=True)
             
-            # Targets for next month (if available)
+            # Targets for next month
             target_data = []
             for target in ['Target Committed for PKT', 
                           'Target Committed for CSAT (Agent Behaviour)',
