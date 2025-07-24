@@ -164,70 +164,81 @@ if time_frame == "Month":
                 st.warning("No data found for this employee/month")
 
 # === WEEK VIEW ===
+# === WEEK VIEW ===
 elif time_frame == "Week":
-    emp_id = st.text_input("Enter EMP ID")
-
-    day_df["Week"] = pd.to_numeric(day_df["Week"], errors="coerce")
-    day_df = day_df.dropna(subset=["Week"])
-    day_df["Week"] = day_df["Week"].astype(int)
-
-    selected_week = st.selectbox("Select Week Number", sorted(day_df["Week"].unique()))
-
-  if emp_id and selected_week:
-    week_data = day_df[(day_df["EMP ID"].astype(str) == emp_id) & (day_df["Week"] == selected_week)]
-
-    csat_df['EMP ID'] = csat_df['EMP ID'].astype(str).str.strip()
-    csat_df['Week'] = csat_df['Week'].astype(str).str.strip()
-
-    csat_data = csat_df[
-        (csat_df["EMP ID"] == emp_id.strip()) &
-        (csat_df["Week"] == str(selected_week).strip())
-    ]
-
-    if not week_data.empty:
-        emp_name = week_data["NAME"].iloc[0]
-        st.markdown(f"### Weekly KPI Data for **{emp_name}** | Week {selected_week}")
-
-        total_calls = week_data["Call Count"].sum()
-        avg_aht = pd.to_timedelta(week_data["AHT"]).mean()
-        avg_hold = pd.to_timedelta(week_data["Hold"]).mean()
-        avg_wrap = pd.to_timedelta(week_data["Wrap"]).mean()
-        avg_auto_on = pd.to_timedelta(week_data["Auto On"]).mean()
-
-        def fmt(td):
-            return str(td).split(" ")[-1].split(".")[0]
-
-        kpi_df = pd.DataFrame([
-            ("📞 Total Calls", total_calls),
-            ("⏱️ AHT", fmt(avg_aht)),
-            ("🎧 Hold", fmt(avg_hold)),
-            ("📝 Wrap", fmt(avg_wrap)),
-            ("🔄 Avg Auto On", fmt(avg_auto_on)),
-        ], columns=["Metric", "Value"])
-
-        st.dataframe(kpi_df, use_container_width=True)
-
-        if not csat_data.empty:
-            st.subheader("CSAT Scores")
-            csat_df_show = pd.DataFrame([
-                ("💬 CSAT Resolution", csat_data["CSAT Resolution"].values[0]),
-                ("😊 CSAT Behaviour", csat_data["CSAT Behaviour"].values[0])
-            ], columns=["Type", "Score"])
-            st.dataframe(csat_df_show, use_container_width=True)
-        else:
-            st.info("CSAT data not found for this week.")
-
-        quotes = [
-            " Keep up the momentum and aim higher!",
-            " Greatness is built on good habits.",
-            " Stay consistent — growth follows.",
-            " You’ve got the spark — now fire up more!",
-            " Progress is progress, no matter how small."
-        ]
-        st.info(random.choice(quotes))
+    st.subheader("📅 Weekly Performance")
+    
+    # First show week selector
+    if not day_df.empty and not csat_df.empty:
+        # Get available weeks from both dataframes
+        day_weeks = day_df['Week'].dropna().unique()
+        csat_weeks = csat_df['Week'].dropna().unique()
+        all_weeks = sorted(set(day_weeks) | set(csat_weeks))
+        
+        # Show week selector at the top
+        selected_week = st.selectbox("Select Week", all_weeks, key="week_select")
+        
+        # Then show EMP ID input below
+        emp_id = st.text_input("Enter Employee ID", key="week_emp_id")
+        
+        if emp_id and selected_week:
+            try:
+                # Get weekly call data
+                week_calls = day_df[
+                    (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                    (day_df["Week"] == selected_week)
+                ]
+                
+                # Get weekly CSAT
+                week_csat = csat_df[
+                    (csat_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                    (csat_df["Week"] == selected_week)
+                ]
+                
+                if not week_calls.empty:
+                    # Calculate metrics
+                    metrics = {
+                        "📞 Total Calls": int(week_calls["Call Count"].sum()),
+                        "⏱️ Avg AHT": str(timedelta(seconds=int(week_calls["AHT_sec"].mean()))[:-3],
+                        "🕒 Avg Hold": str(timedelta(seconds=int(week_calls["Hold_sec"].mean()))[:-3],
+                        "📝 Avg Wrap": str(timedelta(seconds=int(week_calls["Wrap_sec"].mean()))[:-3],
+                        "🤖 Avg Auto On": str(timedelta(seconds=int(week_calls["Auto On_sec"].mean()))[:-3]
+                    }
+                    
+                    # Add CSAT if available
+                    if not week_csat.empty:
+                        metrics.update({
+                            "😊 CSAT Resolution": f"{week_csat['CSAT Resolution'].mean():.1f}%",
+                            "👍 CSAT Behaviour": f"{week_csat['CSAT Behaviour'].mean():.1f}%"
+                        })
+                    
+                    # Display metrics in columns
+                    st.subheader(f"Week {selected_week} Performance")
+                    cols = st.columns(3)
+                    for i, (metric, value) in enumerate(metrics.items()):
+                        cols[i%3].metric(metric, value)
+                    
+                    # Show daily breakdown
+                    with st.expander("View Daily Breakdown"):
+                        daily_data = week_calls.groupby('Date').agg({
+                            'Call Count': 'sum',
+                            'AHT_sec': 'mean',
+                            'Hold_sec': 'mean',
+                            'Wrap_sec': 'mean',
+                            'Auto On_sec': 'mean'
+                        }).reset_index()
+                        
+                        # Format time columns
+                        for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
+                            daily_data[col] = daily_data[col].apply(lambda x: str(timedelta(seconds=int(x)))[:-3])
+                        
+                        st.dataframe(daily_data)
+                else:
+                    st.warning("No call data found for this employee/week")
+            except Exception as e:
+                st.error(f"Error processing weekly data: {str(e)}")
     else:
-        st.warning("No data found for that EMP ID and week.")
-
+        st.warning("Weekly data not loaded properly")
 # === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
