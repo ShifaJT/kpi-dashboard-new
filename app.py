@@ -187,9 +187,19 @@ if time_frame == "Month":
                             except:
                                 delta = None
                             if delta is not None:
-                                st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
-                            else:
-                                st.metric("Overall Score", f"{current_score:.1f}/5.0")
+    st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
+    
+    # Sentence about improvement or drop
+    if delta > 0:
+        st.markdown(f"🔺 **{abs(delta):.1f} improved from last month.**")
+        st.success("Keep up the great work and continue the momentum! 💪")
+    elif delta < 0:
+        st.markdown(f"🔻 **{abs(delta):.1f} dropped from last month.**")
+        st.warning("Let's focus on areas of improvement and bounce back stronger! 🚀")
+else:
+    st.metric("Overall Score", f"{current_score:.1f}/5.0")
+    st.info("No data from the previous month to compare.")
+
                             st.progress(current_score/5)
                         
                         st.markdown("### 🎯 Targets Committed")
