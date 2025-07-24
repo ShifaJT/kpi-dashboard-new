@@ -117,53 +117,79 @@ if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
     
     if not month_df.empty:
-        # Convert month strings to datetime for proper sorting
+        # Debug: Show raw month data
+        st.write("Debug - First 5 month values:", month_df['Month'].head().tolist())
+        
         try:
-            month_df['Month'] = pd.to_datetime(month_df['Month'], format='%b-%y', errors='coerce')
-            available_months = month_df['Month'].dropna().unique()
-            available_months = sorted(available_months)
-            month_names = [month.strftime('%b-%y') for month in available_months]
-        except:
-            month_names = sorted(month_df['Month'].unique())
-        
-        selected_month = st.selectbox("Select Month", month_names)
-        emp_id = st.text_input("Enter Employee ID", key="month_emp_id")
-        
-        if emp_id and selected_month:
-            # Filter data for selected month and employee
-            monthly_data = month_df[
-                (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                (month_df['Month'].astype(str).str.contains(selected_month))
-            ]
+            # Try multiple date formats
+            month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%b-%y', errors='coerce')
             
-            if not monthly_data.empty:
-                row = monthly_data.iloc[0]
-                st.subheader(f"Performance for {row['NAME']} - {selected_month}")
-                
-                # Performance Metrics Section
-                st.markdown("### 📊 Performance Metrics")
-                cols = st.columns(4)
-                metrics = [
-                    ("⏱️ Hold Time", row.get('Hold', 'N/A')),
-                    ("📝 Wrap Time", row.get('Wrap', 'N/A')),
-                    ("🤖 Auto-On", row.get('Auto-On', 'N/A')),
-                    ("⏰ Schedule Adherence", f"{row.get('Schedule Adherence', 'N/A')}%"),
-                    ("😊 CSAT Resolution", f"{row.get('Resolution CSAT', 'N/A')}%"),
-                    ("👍 CSAT Behaviour", f"{row.get('Agent Behaviour', 'N/A')}%"),
-                    ("⭐ Quality", f"{row.get('Quality', 'N/A')}%"),
-                    ("🧠 PKT", f"{row.get('PKT', 'N/A')}%"),
-                    ("📅 SL + UPL", row.get('SL + UPL', 'N/A')),
-                    ("📞 Logins", row.get('LOGINS', 'N/A'))
-                ]
-                
-                for i, (label, value) in enumerate(metrics):
-                    cols[i%4].metric(label, value)
-                
-                # Rest of your month view code...
+            # If first format failed, try alternative formats
+            if month_df['Month_dt'].isna().all():
+                month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%B %Y', errors='coerce')
+            if month_df['Month_dt'].isna().all():
+                month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%m/%d/%Y', errors='coerce')
+            
+            available_months = month_df['Month_dt'].dropna().unique()
+            if len(available_months) > 0:
+                available_months = sorted(available_months)
+                month_names = [month.strftime('%b-%y') for month in available_months]
             else:
-                st.warning("No data found for this employee/month")
+                # Fallback to raw month values if no dates could be parsed
+                month_names = sorted(month_df['Month'].astype(str).unique())
+                st.warning("Using raw month values (couldn't parse as dates)")
+        except Exception as e:
+            st.error(f"Error processing months: {str(e)}")
+            month_names = sorted(month_df['Month'].astype(str).unique())
+        
+        if len(month_names) == 0:
+            st.error("No months found in the data. Please check your 'KPI Month' sheet.")
+        else:
+            selected_month = st.selectbox("Select Month", month_names)
+            emp_id = st.text_input("Enter Employee ID", key="month_emp_id")
+            
+            if emp_id and selected_month:
+                try:
+                    # Filter using both datetime and string versions
+                    monthly_data = month_df[
+                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                        (
+                            (month_df['Month_dt'].dt.strftime('%b-%y') == selected_month) |
+                            (month_df['Month'].astype(str).str.strip() == selected_month.strip())
+                        )
+                    ]
+                    
+                    if not monthly_data.empty:
+                        row = monthly_data.iloc[0]
+                        st.subheader(f"Performance for {row['NAME']} - {selected_month}")
+                        
+                        # Performance Metrics Section
+                        st.markdown("### 📊 Performance Metrics")
+                        cols = st.columns(4)
+                        metrics = [
+                            ("⏱️ Hold Time", row.get('Hold', 'N/A')),
+                            ("📝 Wrap Time", row.get('Wrap', 'N/A')),
+                            ("🤖 Auto-On", row.get('Auto-On', 'N/A')),
+                            ("⏰ Schedule Adherence", f"{row.get('Schedule Adherence', 'N/A')}%"),
+                            ("😊 CSAT Resolution", f"{row.get('Resolution CSAT', 'N/A')}%"),
+                            ("👍 CSAT Behaviour", f"{row.get('Agent Behaviour', 'N/A')}%"),
+                            ("⭐ Quality", f"{row.get('Quality', 'N/A')}%"),
+                            ("🧠 PKT", f"{row.get('PKT', 'N/A')}%"),
+                            ("📅 SL + UPL", row.get('SL + UPL', 'N/A')),
+                            ("📞 Logins", row.get('LOGINS', 'N/A'))
+                        ]
+                        
+                        for i, (label, value) in enumerate(metrics):
+                            cols[i%4].metric(label, value)
+                    else:
+                        st.warning("No data found for this employee/month")
+                except Exception as e:
+                    st.error(f"Error filtering data: {str(e)}")
     else:
-        st.warning("Monthly data not loaded properly")
+        st.warning("Monthly data not loaded properly. Please check:")
+        st.write("- The sheet name is correct ('KPI Month')")
+        st.write("- You have view permissions for the sheet")
+        st.write("- The sheet contains data")
 
 # === WEEK VIEW ===
 elif time_frame == "Week":
