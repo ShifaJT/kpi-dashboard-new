@@ -1,4 +1,3 @@
-
 # === COMPLETE KPI DASHBOARD SOLUTION ===
 import streamlit as st
 import pandas as pd
@@ -155,7 +154,7 @@ def get_weekly_top_performers(target_week=None):
         
         # Aggregate metrics - ensure all columns are numeric before aggregation
         metrics = week_day_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
-            'Call Count': 'sum',  # Still collected but not used in scoring
+            'Call Count': 'sum',
             'AHT_sec': 'mean',
             'Wrap_sec': 'mean',
             'Hold_sec': 'mean',
@@ -178,16 +177,15 @@ def get_weekly_top_performers(target_week=None):
         
         metrics.fillna(0, inplace=True)
         
-        # === UPDATED SCORING LOGIC ===
-        # Lower times are better for AHT, Wrap, Hold (so we use 1/time)
-        # Higher values are better for Auto On and CSAT (used directly)
+        # Calculate performance score (used for sorting only)
         metrics['Score'] = (
-            (1 / metrics['AHT_sec'].clip(lower=1)) * 50 +  # Most weight to AHT
-            (1 / metrics['Wrap_sec'].clip(lower=1)) * 30 +
-            (1 / metrics['Hold_sec'].clip(lower=1)) * 20 +
-            metrics['Auto On_sec'] * 0.1 +  # Smaller multiplier since values are large
-            metrics['CSAT Resolution'] * 2 +  # More weight to CSAT
-            metrics['CSAT Behaviour'] * 2
+            metrics['Call Count'] +
+            (1 / metrics['AHT_sec'].clip(lower=1)) * 100 +
+            (1 / metrics['Wrap_sec'].clip(lower=1)) * 50 +
+            (1 / metrics['Hold_sec'].clip(lower=1)) * 25 +
+            metrics['Auto On_sec'] +
+            metrics['CSAT Resolution'] * 10 +
+            metrics['CSAT Behaviour'] * 10
         )
         
         return metrics.nlargest(5, 'Score').reset_index(drop=True)
@@ -198,17 +196,19 @@ def get_weekly_top_performers(target_week=None):
 
 # === DASHBOARD UI ===
 st.markdown("""
-<div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 10px;">
+<div style="background: linear-gradient(to right, #0072ff, #00c6ff); padding: 20px 30px; border-radius: 12px; color: white; font-size: 26px; font-weight: bold; margin-bottom: 20px;">
     🏆 KPI Dashboard for Champions 🏆
 </div>
 """, unsafe_allow_html=True)
 
-# === COMPACT EMOJI LEGEND ===
+# === EMOJI METRIC LEGEND ===
 st.markdown("""
-<div style="margin-bottom: 20px; font-size: 14px;">
-    <b>📊 Metrics:</b> 📞Calls | ⏱️AHT | 🤖AutoOn | 🕒Hold | 😊Res | 👍Beh | 🥇Gold | 🥈Silver | 🥉Bronze | 🎖️Top5
-</div>
-""", unsafe_allow_html=True)
+**📊 Metric Legend:**
+- 📞 Call Count | ⏱️ AHT (Average Handle Time)  
+- 🤖 Auto On Time | 🕒 Hold Time  
+- 😊 CSAT Resolution | 👍 CSAT Behaviour  
+- 🥇 Gold | 🥈 Silver | 🥉 Bronze | 🎖️ Top 5
+""")
 
 # === CURRENT WEEK TOP PERFORMERS ===
 current_week = datetime.now().isocalendar()[1]
@@ -217,35 +217,49 @@ top_performers = get_weekly_top_performers(current_week)
 if not top_performers.empty:
     st.markdown("### 🏅 Current Week's Top Performers")
     
-    # Create a single row with all top performers
-    cols = st.columns(5)  # 5 columns for up to 5 top performers
-    
-    for idx, row in top_performers.iterrows():
+    # Display top 3 in one row
+    cols = st.columns(3)
+    for idx, row in top_performers.head(3).iterrows():
         with cols[idx]:
-            # Determine medal emoji
-            medal = ['🥇', '🥈', '🥉', '🎖️', '🎖️'][idx] if idx < 5 else '🎖️'
-            
-            # Check which metrics are available
-            has_autoon = row['Auto On_sec'] > 0
+            # Check if CSAT data exists
             has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
             
-            # Build the display text
-            display_text = f"""
+            st.markdown(f"""
             <div style='
                 background:#f0f2f6;
-                padding:10px;
+                padding:12px;
                 border-radius:8px;
-                margin-bottom:10px;
-                font-size:13px;
+                margin-bottom:12px;
+                font-size:14px;
             '>
-                <b>{medal} {row['NAME']}</b><br>
-                📞{int(row['Call Count'])} ⏱️{timedelta(seconds=int(row['AHT_sec']))}
-                {f"<br>🤖{timedelta(seconds=int(row['Auto On_sec']))}" if has_autoon else ""}
-                {f"<br>😊{row['CSAT Resolution']:.1f}% 👍{row['CSAT Behaviour']:.1f}%" if has_csat else ""}
+                <b>{['🥇','🥈','🥉'][idx]} {row['NAME']}</b><br>
+                📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}<br>
+                🤖 {timedelta(seconds=int(row['Auto On_sec']))} | 🕒 {timedelta(seconds=int(row['Hold_sec']))}
+                {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
             </div>
-            """
-            st.markdown(display_text, unsafe_allow_html=True)
-
+            """, unsafe_allow_html=True)
+    
+    # Display next 2 in another row if available
+    if len(top_performers) > 3:
+        cols = st.columns(2)
+        for idx, row in top_performers[3:5].iterrows():
+            with cols[idx-3]:
+                # Check if CSAT data exists
+                has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
+                
+                st.markdown(f"""
+                <div style='
+                    background:#f0f2f6;
+                    padding:12px;
+                    border-radius:8px;
+                    margin-bottom:12px;
+                    font-size:14px;
+                '>
+                    <b>🎖️ {row['NAME']}</b><br>
+                    📞 {int(row['Call Count'])} | ⏱️ {timedelta(seconds=int(row['AHT_sec']))}
+                    {f"<br>😊 {row['CSAT Resolution']:.1f}% | 👍 {row['CSAT Behaviour']:.1f}%" if has_csat else ""}
+                </div>
+                """, unsafe_allow_html=True)
 else:
     st.info("📭 No performance data available for the current week.")
 
