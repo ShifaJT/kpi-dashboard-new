@@ -227,17 +227,24 @@ elif time_frame == "Week":
                 st.warning("No call data found for this employee/week")
 
 # === DAY VIEW ===
+# === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
     
     if not day_df.empty:
-        # Get available dates
-        available_dates = sorted(day_df['Date'].unique())
-        selected_date = st.selectbox("Select Date", available_dates)
+        # Make sure Date column is datetime
+        if day_df['Date'].dtype != 'datetime64[ns]':
+            day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
+
+        # Get unique available dates
+        available_dates = sorted(day_df['Date'].dropna().unique())
         
+        # Show filters
         emp_id = st.text_input("Enter Employee ID", key="day_emp_id")
+        selected_date = st.selectbox("Select Date", available_dates, key="day_date_select")
         
         if emp_id and selected_date:
+            # Filter the data
             daily_data = day_df[
                 (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
                 (day_df["Date"] == selected_date)
@@ -245,33 +252,40 @@ else:
             
             if not daily_data.empty:
                 row = daily_data.iloc[0]
-                st.subheader(f"Performance for {row['NAME']} - {selected_date}")
+                st.subheader(f"Performance for {row['NAME']} on {selected_date}")
                 
-                # Format time columns
+                # Format time
                 def format_time(seconds):
                     return str(timedelta(seconds=int(seconds)))[:-3] if seconds > 0 else "00:00"
                 
+                # Convert time if needed
+                for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
+                    day_df[f"{col}_sec"] = day_df[col].apply(safe_convert_time)
+
+                # Prepare metrics
                 metrics = [
-                    ("📞 Calls", row['Call Count']),
+                    ("📞 Call Count", row.get('Call Count', 0)),
                     ("⏱️ AHT", format_time(row.get('AHT_sec', 0))),
-                    ("🕒 Hold", format_time(row.get('Hold_sec', 0))),
                     ("📝 Wrap", format_time(row.get('Wrap_sec', 0))),
+                    ("🕒 Hold", format_time(row.get('Hold_sec', 0))),
                     ("🤖 Auto On", format_time(row.get('Auto On_sec', 0))),
-                    ("😊 CSAT Res", f"{row.get('CSAT Resolution', 0)}%"),
-                    ("👍 CSAT Beh", f"{row.get('CSAT Behaviour', 0)}%")
+                    ("😊 CSAT Resolution", f"{row.get('CSAT Resolution', 0)}%"),
+                    ("👍 CSAT Behaviour", f"{row.get('CSAT Behaviour', 0)}%")
                 ]
                 
-                # Display metrics
+                # Display
                 cols = st.columns(4)
                 for i, (label, value) in enumerate(metrics):
-                    cols[i%4].metric(label, value)
-                
-                # Performance comment
+                    cols[i % 4].metric(label, value)
+
+                # Performance Comment
                 if row['Call Count'] > 50:
-                    st.success("Excellent call volume today!")
+                    st.success("🔥 Excellent call volume today!")
                 elif row['Call Count'] > 30:
-                    st.info("Good performance today")
+                    st.info("✅ Good performance today.")
                 else:
-                    st.warning("Let's aim for more calls tomorrow")
+                    st.warning("📈 Let’s aim for more calls tomorrow.")
             else:
-                st.warning("No data found for this employee/date")
+                st.warning("No data found for this employee/date.")
+    else:
+        st.warning("KPI Day data is empty or not loaded correctly.")
