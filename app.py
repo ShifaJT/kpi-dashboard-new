@@ -26,98 +26,75 @@ sheet = client.open_by_key(SHEET_ID)
 def safe_load_sheet(name):
     try:
         worksheet = sheet.worksheet(name)
+        records = worksheet.get_all_records()
+        df = pd.DataFrame(records)
         
-        # Get all values to inspect headers
-        all_values = worksheet.get_all_values()
+        # Clean column names and data
+        df.columns = df.columns.str.strip()
         
-        if not all_values or len(all_values) < 1:
-            return pd.DataFrame()
-            
-        # Get headers from first row
-        headers = [str(h).strip() for h in all_values[0]]
-        
-        # Create DataFrame with data rows
-        data = all_values[1:] if len(all_values) > 1 else []
-        df = pd.DataFrame(data, columns=headers)
-        
-        # Clean data
-        df = df.replace('', pd.NA).dropna(how='all')
-        
+        # Convert all string columns to stripped strings
+        for col in df.columns:
+            if df[col].dtype == object:
+                df[col] = df[col].astype(str).str.strip()
+                
         return df
     except Exception as e:
         st.error(f"Error loading {name} sheet: {str(e)}")
         return pd.DataFrame()
 
-# Load all data without expected headers
+# Load data
 month_df = safe_load_sheet(SHEET_MONTH)
 day_df = safe_load_sheet(SHEET_DAY)
 csat_df = safe_load_sheet(SHEET_CSAT)
 
 # ===== DATA VALIDATION =====
-def check_required_columns(df, df_name, required_cols):
-    missing = []
-    for col in required_cols:
-        if col not in df.columns:
-            missing.append(col)
-    return missing
+def validate_columns(df, df_name, required_cols):
+    missing = [col for col in required_cols if col not in df.columns]
+    if missing:
+        st.error(f"Missing in {df_name}: {', '.join(missing)}")
+    return not bool(missing)
 
-# Check required columns for each sheet
-month_errors = check_required_columns(month_df, 'Month', 
-    ["EMP ID", "Month", "Grand Total"])
-day_errors = check_required_columns(day_df, 'Day', 
-    ["EMP ID", "Call Count", "Date"])
-csat_errors = check_required_columns(csat_df, 'CSAT', 
-    ["EMP ID", "CSAT Resolution"])
+# Validate required columns
+valid = True
+valid &= validate_columns(month_df, 'Month', ["EMP ID", "Month", "Grand Total"])
+valid &= validate_columns(day_df, 'Day', ["EMP ID", "Call Count", "Date"])
+valid &= validate_columns(csat_df, 'CSAT', ["EMP ID", "CSAT Resolution"])
 
-if month_errors or day_errors or csat_errors:
-    st.error("Data validation failed:")
-    if month_errors:
-        st.error(f"Missing in Month: {', '.join(month_errors)}")
-    if day_errors:
-        st.error(f"Missing in Day: {', '.join(day_errors)}")
-    if csat_errors:
-        st.error(f"Missing in CSAT: {', '.join(csat_errors)}")
+if not valid:
     st.stop()
 
 # ===== DATA PROCESSING =====
-def process_data(df):
-    # Clean string columns
-    for col in df.columns:
-        if df[col].dtype == object:
-            df[col] = df[col].astype(str).str.strip()
-    
-    # Convert EMP ID to string
-    if 'EMP ID' in df.columns:
-        df['EMP ID'] = df['EMP ID'].astype(str).str.strip()
-    
-    # Convert dates
-    if 'Date' in df.columns:
-        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-    
-    # Convert percentages
-    pct_cols = [col for col in df.columns if any(x in col for x in ['CSAT', 'KPI', 'Quality', 'PKT'])]
-    for col in pct_cols:
-        if col in df.columns:
-            df[col] = df[col].astype(str).str.replace('%', '').str.strip()
-            df[col] = pd.to_numeric(df[col], errors='coerce')
-    
-    return df
+def convert_time_to_seconds(time_val):
+    try:
+        if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00']:
+            return 0.0
+            
+        time_str = str(time_val).strip()
+        
+        if time_str.count(':') > 2:
+            parts = time_str.split(':')
+            time_str = f"{parts[-3]}:{parts[-2]}:{parts[-1]}"
+            
+        if ':' in time_str:
+            parts = time_str.split(':')
+            if len(parts) == 3:  # HH:MM:SS
+                return float(parts[0])*3600 + float(parts[1])*60 + float(parts[2])
+            elif len(parts) == 2:  # MM:SS
+                return float(parts[0])*60 + float(parts[1])
+                
+        return float(time_str) if time_str.replace('.','',1).isdigit() else 0.0
+    except:
+        return 0.0
 
-month_df = process_data(month_df)
-day_df = process_data(day_df)
-csat_df = process_data(csat_df)
-
-# Convert time columns to seconds
+# Convert time columns
 time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
 for col in time_cols:
     if col in day_df.columns:
-        day_df[f"{col}_sec"] = day_df[col].apply(
-            lambda x: sum(int(t) * 60**i for i, t in enumerate(reversed(x.split(':')))) 
-            if isinstance(x, str) and ':' in x else 0
-        )
+        day_df[f"{col}_sec"] = day_df[col].apply(convert_time_to_seconds)
 
-# Add week numbers if not present
+# Add week numbers if date exists
 if 'Week' not in day_df.columns and 'Date' in day_df.columns:
+    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
     day_df['Week'] = day_df['Date'].dt.isocalendar().week.astype(str)
 
 # ===== TOP PERFORMERS CALCULATION =====
@@ -165,9 +142,9 @@ def get_weekly_top_performers():
         )
         
         # Format for display
-        metrics['Hold'] = metrics['Hold_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
-        metrics['Wrap'] = metrics['Wrap_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
-        metrics['Auto On'] = metrics['Auto On_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0]
+        metrics['Hold'] = metrics['Hold_sec'].apply(lambda x: str(timedelta(seconds=int(x))))
+        metrics['Wrap'] = metrics['Wrap_sec'].apply(lambda x: str(timedelta(seconds=int(x))))
+        metrics['Auto On'] = metrics['Auto On_sec'].apply(lambda x: str(timedelta(seconds=int(x))))
         metrics['CSAT Beh'] = metrics['CSAT Behaviour'].apply(lambda x: f"{x:.1f}%")
         metrics['CSAT Res'] = metrics['CSAT Resolution'].apply(lambda x: f"{x:.1f}%")
         
@@ -207,7 +184,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Top Performers Section
+# Top Performers
 st.markdown("## 🏅 Current Week's Top Performers")
 top_performers = get_weekly_top_performers()
 
@@ -238,15 +215,15 @@ else:
     st.info("📭 No performance data available for the current week.")
 
 # Timeframe Selector
-time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"], key="timeframe_select")
+time_frame = st.selectbox("⏳ Select Timeframe", ["Day", "Week", "Month"])
 
 # ===== DAY VIEW =====
 if time_frame == "Day":
     st.markdown("## 📅 Daily Performance")
     
-    emp_id = st.text_input("🔢 Enter EMP ID", key="day_emp_id")
+    emp_id = st.text_input("🔢 Enter EMP ID")
     available_dates = sorted(day_df['Date'].dt.date.unique())
-    selected_date = st.selectbox("Select Date", available_dates, key="day_date_select")
+    selected_date = st.selectbox("Select Date", available_dates)
     
     if emp_id:
         daily_data = day_df[
@@ -274,7 +251,7 @@ if time_frame == "Day":
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">⏱️ AHT</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['AHT_sec']))}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['AHT_sec'])))}</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -282,14 +259,14 @@ if time_frame == "Day":
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">🕒 Hold Time</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['Hold_sec']))}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Hold_sec'])))}</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 st.markdown(f"""
                 <div class="metric-card">
                     <div class="metric-title">📝 Wrap Time</div>
-                    <div class="metric-value">{str(timedelta(seconds=int(row['Wrap_sec']))}</div>
+                    <div class="metric-value">{str(timedelta(seconds=int(row['Wrap_sec'])))}</div>
                 </div>
                 """, unsafe_allow_html=True)
             
@@ -326,9 +303,9 @@ if time_frame == "Day":
 elif time_frame == "Week":
     st.markdown("## 📅 Weekly Performance")
     
-    emp_id = st.text_input("🔢 Enter EMP ID", key="week_emp_id")
+    emp_id = st.text_input("🔢 Enter EMP ID")
     available_weeks = sorted(day_df['Week'].unique())
-    selected_week = st.selectbox("Select Week", available_weeks, key="week_select")
+    selected_week = st.selectbox("Select Week", available_weeks)
     
     if emp_id:
         week_data = day_df[
@@ -411,9 +388,9 @@ elif time_frame == "Week":
 elif time_frame == "Month":
     st.markdown("## 📅 Monthly Performance")
     
-    emp_id = st.text_input("🔢 Enter EMP ID", key="month_emp_id")
+    emp_id = st.text_input("🔢 Enter EMP ID")
     available_months = sorted(month_df['Month'].unique())
-    selected_month = st.selectbox("Select Month", available_months, key="month_select")
+    selected_month = st.selectbox("Select Month", available_months)
     
     if emp_id:
         month_data = month_df[
