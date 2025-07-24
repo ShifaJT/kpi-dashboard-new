@@ -25,14 +25,42 @@ def get_gspread_client():
 
 client = get_gspread_client()
 
-# === IMPROVED DATA LOADING ===
+# === IMPROVED DATA LOADING WITH DUPLICATE HEADER HANDLING ===
 @st.cache_data(ttl=3600)
 def load_sheet(name):
     try:
         sheet = client.open_by_key(SHEET_ID)
         worksheet = sheet.worksheet(name)
-        records = worksheet.get_all_records()
-        return pd.DataFrame(records)
+        
+        # Get all data as list of lists (bypasses get_all_records header issue)
+        all_data = worksheet.get_all_values()
+        
+        # Process headers to handle duplicates
+        original_headers = all_data[0]
+        cleaned_headers = []
+        header_counts = {}
+        
+        for header in original_headers:
+            header = header.strip()
+            if not header:
+                header = "Unnamed"
+                
+            # Handle duplicate headers
+            if header in header_counts:
+                header_counts[header] += 1
+                header = f"{header}_{header_counts[header]}"
+            else:
+                header_counts[header] = 1
+                
+            cleaned_headers.append(header)
+        
+        # Create DataFrame with cleaned headers
+        if len(all_data) > 1:
+            df = pd.DataFrame(all_data[1:], columns=cleaned_headers)
+        else:
+            df = pd.DataFrame(columns=cleaned_headers)
+        
+        return df
     except Exception as e:
         st.error(f"Error loading {name}: {str(e)}")
         return pd.DataFrame()
@@ -88,10 +116,14 @@ if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
     
     if not month_df.empty:
-        # Get available months and sort them properly
-        month_df['Month'] = pd.to_datetime(month_df['Month'], format='%b-%y', errors='coerce')
-        available_months = sorted(month_df['Month'].dropna().unique())
-        month_names = [month.strftime('%b-%y') for month in available_months]
+        # Convert month strings to datetime for proper sorting
+        try:
+            month_df['Month'] = pd.to_datetime(month_df['Month'], format='%b-%y', errors='coerce')
+            available_months = month_df['Month'].dropna().unique()
+            available_months = sorted(available_months)
+            month_names = [month.strftime('%b-%y') for month in available_months]
+        except:
+            month_names = sorted(month_df['Month'].unique())
         
         selected_month = st.selectbox("Select Month", month_names)
         emp_id = st.text_input("Enter Employee ID", key="month_emp_id")
@@ -100,7 +132,7 @@ if time_frame == "Month":
             # Filter data for selected month and employee
             monthly_data = month_df[
                 (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                (month_df['Month'].dt.strftime('%b-%y') == selected_month)
+                (month_df['Month'].astype(str).str.contains(selected_month)
             ]
             
             if not monthly_data.empty:
@@ -144,21 +176,26 @@ if time_frame == "Month":
                     kpi_cols[i%4].metric(label, value)
                 
                 # Overall Score
-                st.progress(row['Grand Total']/5)
-                st.metric("Overall KPI Score", f"{row['Grand Total']}/5.0")
+                if 'Grand Total' in row:
+                    st.progress(float(row['Grand Total'])/5)
+                    st.metric("Overall KPI Score", f"{row['Grand Total']}/5.0")
                 
                 # Month-over-Month Comparison
-                prev_month_data = month_df[
-                    (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                    (month_df['Month'] < pd.to_datetime(selected_month, format='%b-%y'))
-                ].sort_values('Month', ascending=False)
-                
-                if not prev_month_data.empty:
-                    prev_row = prev_month_data.iloc[0]
-                    delta = row['Grand Total'] - prev_row['Grand Total']
-                    st.metric("Month-over-Month Change", 
-                            f"{row['Grand Total']}", 
-                            f"{delta:.1f} points")
+                try:
+                    prev_month_data = month_df[
+                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                        (month_df['Month'] < pd.to_datetime(selected_month, format='%b-%y'))
+                    ].sort_values('Month', ascending=False)
+                    
+                    if not prev_month_data.empty:
+                        prev_row = prev_month_data.iloc[0]
+                        if 'Grand Total' in row and 'Grand Total' in prev_row:
+                            delta = float(row['Grand Total']) - float(prev_row['Grand Total'])
+                            st.metric("Month-over-Month Change", 
+                                    f"{row['Grand Total']}", 
+                                    f"{delta:.1f} points")
+                except:
+                    pass
                 
                 # Targets Section
                 st.markdown("### 🎯 Targets Committed")
@@ -172,6 +209,8 @@ if time_frame == "Month":
                     target_cols[i].metric(label, value)
             else:
                 st.warning("No data found for this employee/month")
+    else:
+        st.warning("Monthly data not loaded properly")
 
 # === WEEK VIEW ===
 elif time_frame == "Week":
@@ -304,11 +343,20 @@ else:
                     cols[i%4].metric(label, value)
                 
                 # Performance comment
-                if row['Call Count'] > 50:
+                call_count = row.get('Call Count', 0)
+                if isinstance(call_count, str):
+                    try:
+                        call_count = float(call_count)
+                    except:
+                        call_count = 0
+                
+                if call_count > 50:
                     st.success("Excellent call volume today!")
-                elif row['Call Count'] > 30:
+                elif call_count > 30:
                     st.info("Good performance today")
                 else:
                     st.warning("Let's aim for more calls tomorrow")
             else:
                 st.warning("No data found for this employee/date")
+    else:
+        st.warning("Daily data not loaded properly")
