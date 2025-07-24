@@ -135,7 +135,7 @@ if 'Week' not in day_df.columns and 'Date' in day_df.columns:
     except Exception as e:
         st.error(f"Error processing dates: {str(e)}")
 
-# === FIXED TOP PERFORMERS CALCULATION ===
+# === UPDATED TOP PERFORMERS CALCULATION WITH WEIGHTAGE ===
 def get_weekly_top_performers(target_week=None):
     if target_week is None:
         target_week = datetime.now().isocalendar()[1]
@@ -155,12 +155,11 @@ def get_weekly_top_performers(target_week=None):
             if col in week_day_data.columns:
                 week_day_data[col] = pd.to_numeric(week_day_data[col], errors='coerce').fillna(0)
         
-        # Aggregate metrics - ensure all columns are numeric before aggregation
+        # Aggregate metrics
         metrics = week_day_data.groupby(['EMP ID', 'NAME'], as_index=False).agg({
-            'Call Count': 'sum',  # Still collected but not used in scoring
-            'AHT_sec': 'mean',
-            'Wrap_sec': 'mean',
+            'Call Count': 'sum',
             'Hold_sec': 'mean',
+            'Wrap_sec': 'mean',
             'Auto On_sec': 'mean'
         })
         
@@ -180,17 +179,31 @@ def get_weekly_top_performers(target_week=None):
         
         metrics.fillna(0, inplace=True)
         
-        # === UPDATED SCORING LOGIC ===
-        # Lower times are better for AHT, Wrap, Hold (so we use 1/time)
-        # Higher values are better for Auto On and CSAT (used directly)
+        # === NEW WEIGHTED SCORING LOGIC ===
+        # Normalize each metric to 0-100 scale before applying weights
+        def normalize(series, reverse=False):
+            if series.max() == series.min():
+                return 50  # Midpoint if all values are equal
+            if reverse:
+                return 100 * (series.max() - series) / (series.max() - series.min())
+            return 100 * (series - series.min()) / (series.max() - series.min())
+        
+        # Apply weights according to your specification
         metrics['Score'] = (
-            (1 / metrics['AHT_sec'].clip(lower=1)) * 50 +  # Most weight to AHT
-            (1 / metrics['Wrap_sec'].clip(lower=1)) * 30 +
-            (1 / metrics['Hold_sec'].clip(lower=1)) * 20 +
-            metrics['Auto On_sec'] * 0.1 +  # Smaller multiplier since values are large
-            metrics['CSAT Resolution'] * 2 +  # More weight to CSAT
-            metrics['CSAT Behaviour'] * 2
+            metrics['Call Count'].apply(lambda x: 0) * 0.00 +  # 0% weight
+            normalize(metrics['Hold_sec'], reverse=True) * 0.05 +  # 5% weight (lower is better)
+            normalize(metrics['Wrap_sec'], reverse=True) * 0.05 +  # 5% weight (lower is better)
+            normalize(metrics['CSAT Behaviour']) * 0.25 +  # 25% weight
+            normalize(metrics['CSAT Resolution']) * 0.25 +  # 25% weight
+            normalize(metrics['Auto On_sec']) * 0.40  # 40% weight
         )
+        
+        # Format the metrics for display
+        metrics['Hold'] = metrics['Hold_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
+        metrics['Wrap'] = metrics['Wrap_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
+        metrics['Auto On'] = metrics['Auto On_sec'].apply(lambda x: str(timedelta(seconds=int(x))).split('.')[0])
+        metrics['CSAT Beh'] = metrics['CSAT Behaviour'].apply(lambda x: f"{x:.1f}%")
+        metrics['CSAT Res'] = metrics['CSAT Resolution'].apply(lambda x: f"{x:.1f}%")
         
         return metrics.nlargest(5, 'Score').reset_index(drop=True)
     
@@ -219,35 +232,41 @@ top_performers = get_weekly_top_performers(current_week)
 if not top_performers.empty:
     st.markdown("### 🏅 Current Week's Top Performers")
     
-    # Create a single row with all top performers
-    cols = st.columns(5)  # 5 columns for up to 5 top performers
+    # Create columns for each top performer
+    cols = st.columns(5)
     
     for idx, row in top_performers.iterrows():
         with cols[idx]:
             # Determine medal emoji
             medal = ['🥇', '🥈', '🥉', '🎖️', '🎖️'][idx] if idx < 5 else '🎖️'
             
-            # Check which metrics are available
-            has_autoon = row['Auto On_sec'] > 0
-            has_csat = (row['CSAT Resolution'] > 0) or (row['CSAT Behaviour'] > 0)
-            
-            # Build the display text
+            # Create the display card with the new format
             display_text = f"""
             <div style='
                 background:#f0f2f6;
-                padding:10px;
+                padding:12px;
                 border-radius:8px;
-                margin-bottom:10px;
+                margin-bottom:12px;
                 font-size:13px;
+                box-shadow:0 2px 4px rgba(0,0,0,0.1);
             '>
-                <b>{medal} {row['NAME']}</b><br>
-                📞{int(row['Call Count'])} ⏱️{timedelta(seconds=int(row['AHT_sec']))}
-                {f"<br>🤖{timedelta(seconds=int(row['Auto On_sec']))}" if has_autoon else ""}
-                {f"<br>😊{row['CSAT Resolution']:.1f}% 👍{row['CSAT Behaviour']:.1f}%" if has_csat else ""}
+                <div style='text-align:center; font-weight:bold; font-size:14px; margin-bottom:8px;'>
+                    {medal} {row['NAME']}
+                </div>
+                <table style='width:100%; border-collapse:collapse; font-size:12px;'>
+                    <tr><td>📞 Calls:</td><td style='text-align:right;'>{int(row['Call Count'])}</td></tr>
+                    <tr><td>🕒 Hold:</td><td style='text-align:right;'>{row['Hold']}</td></tr>
+                    <tr><td>📝 Wrap:</td><td style='text-align:right;'>{row['Wrap']}</td></tr>
+                    <tr><td>😊 CSAT Res:</td><td style='text-align:right;'>{row['CSAT Res']}</td></tr>
+                    <tr><td>👍 CSAT Beh:</td><td style='text-align:right;'>{row['CSAT Beh']}</td></tr>
+                    <tr><td>🤖 Auto On:</td><td style='text-align:right;'>{row['Auto On']}</td></tr>
+                </table>
+                <div style='margin-top:8px; text-align:center; font-size:11px; color:#666;'>
+                    Score: {row['Score']:.1f}
+                </div>
             </div>
             """
             st.markdown(display_text, unsafe_allow_html=True)
-
 else:
     st.info("📭 No performance data available for the current week.")
 
