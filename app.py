@@ -6,6 +6,32 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import numpy as np
 
+# Add custom CSS for top performers section
+st.markdown("""
+<style>
+    .top-performer-card {
+        background-color: #f8f9fa;
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 10px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    .top-performer-rank {
+        font-weight: bold;
+        color: #2c3e50;
+        font-size: 1.2em;
+    }
+    .top-performer-name {
+        font-weight: bold;
+        color: #3498db;
+    }
+    .top-performer-score {
+        color: #27ae60;
+        font-weight: bold;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # Helper functions to clean values
 def clean_value(val):
     if pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
@@ -15,6 +41,76 @@ def clean_value(val):
 def clean_percentage(val):
     cleaned = clean_value(val)
     return f"{cleaned}%" if cleaned != 'N/A' else 'N/A'
+
+# === NEW FUNCTION FOR TOP PERFORMERS ===
+def calculate_weighted_score(row):
+    """Calculate weighted score based on specified metrics and weightages"""
+    try:
+        # Convert time metrics to seconds
+        hold = safe_convert_time(row.get('Hold', 0))
+        wrap = safe_convert_time(row.get('Wrap', 0))
+        auto_on = safe_convert_time(row.get('Auto On', 0))
+        
+        # Convert CSAT percentages
+        csat_beh = float(str(row.get('CSAT Behaviour', '0')).replace('%', '')) if str(row.get('CSAT Behaviour', '0')).replace('%', '').replace('.', '').isdigit() else 0
+        csat_res = float(str(row.get('CSAT Resolution', '0')).replace('%', '')) if str(row.get('CSAT Resolution', '0')).replace('%', '').replace('.', '').isdigit() else 0
+        
+        # Normalize time metrics (lower is better)
+        hold_score = max(0, 100 - (hold / 60 * 100)) if hold > 0 else 100
+        wrap_score = max(0, 100 - (wrap / 120 * 100)) if wrap > 0 else 100
+        auto_on_score = min(100, (auto_on / (8*3600) * 100)) if auto_on > 0 else 0
+        
+        # Calculate weighted score (call count not included as per 0% weightage)
+        weighted_score = (
+            (hold_score * 0.05) + 
+            (wrap_score * 0.05) + 
+            (csat_beh * 0.25) + 
+            (csat_res * 0.25) + 
+            (auto_on_score * 0.40)
+        )
+        
+        return round(weighted_score, 2)
+    except Exception as e:
+        st.error(f"Error calculating score: {str(e)}")
+        return 0
+
+def get_weekly_top_performers(day_df, csat_df, week):
+    """Identify top 5 performers for a given week"""
+    try:
+        # Filter data for the selected week
+        week_day_data = day_df[day_df['Week'] == str(week)].copy()
+        week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
+        
+        if week_day_data.empty or week_csat_data.empty:
+            return pd.DataFrame()
+        
+        # Group by employee and calculate averages
+        weekly_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
+            'Hold_sec': 'mean',
+            'Wrap_sec': 'mean',
+            'Auto On_sec': 'mean'
+        }).reset_index()
+        
+        # Merge with CSAT data
+        weekly_metrics = pd.merge(
+            weekly_metrics,
+            week_csat_data[['EMP ID', 'CSAT Behaviour', 'CSAT Resolution']],
+            on='EMP ID',
+            how='left'
+        )
+        
+        # Calculate scores
+        weekly_metrics['Weighted Score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
+        
+        # Get top 5 and format
+        top_performers = weekly_metrics.sort_values('Weighted Score', ascending=False).head(5)
+        top_performers = top_performers[['EMP ID', 'NAME', 'Weighted Score']]
+        top_performers['Weighted Score'] = top_performers['Weighted Score'].apply(lambda x: f"{x:.2f}")
+        
+        return top_performers
+    except Exception as e:
+        st.error(f"Error identifying top performers: {str(e)}")
+        return pd.DataFrame()
 
 # === CONFIGURATION ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
@@ -103,6 +199,29 @@ if not csat_df.empty:
     for col in ['CSAT Resolution', 'CSAT Behaviour']:
         if col in csat_df.columns:
             csat_df[col] = pd.to_numeric(csat_df[col].astype(str).str.replace('%', ''), errors='coerce')
+
+# === DISPLAY WEEKLY TOP PERFORMERS ===
+if not day_df.empty and not csat_df.empty:
+    current_week = datetime.now().isocalendar()[1]
+    top_performers = get_weekly_top_performers(day_df, csat_df, current_week)
+    
+    if not top_performers.empty:
+        with st.sidebar:
+            st.header("🏆 Weekly Top Performers")
+            st.markdown(f"**Week {current_week}**")
+            
+            for i, (_, row) in enumerate(top_performers.iterrows(), 1):
+                emoji = "👑" if i == 1 else "🏅" if i == 2 else "🥉" if i == 3 else "🎯"
+                st.markdown(
+                    f"""
+                    <div class="top-performer-card">
+                        <div class="top-performer-rank">{emoji} Rank #{i}</div>
+                        <div class="top-performer-name">{row['NAME']}</div>
+                        <div class="top-performer-score">Score: {row['Weighted Score']}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
 
 # === DASHBOARD UI ===
 st.title(" KPI Performance Dashboard")
