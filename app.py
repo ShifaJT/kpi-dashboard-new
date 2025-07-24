@@ -106,35 +106,58 @@ if time_frame == "Month":
                 row = monthly_data.iloc[0]
                 st.subheader(f"Performance for {row['NAME']} - {selected_month}")
                 
-                # Display KPIs
+                # Display Performance Metrics
                 cols = st.columns(4)
-                metrics = [
-                    ("📞 Call Volume", f"{row['LOGINS']} days"),
-                    ("⏱️ Avg Hold", f"{row['Hold']}"),
-                    ("📝 Avg Wrap", f"{row['Wrap']}"),
-                    ("🤖 Auto-On", f"{row['Auto-On']}"),
-                    ("😊 CSAT Res", f"{row['Resolution CSAT']}%"),
-                    ("👍 CSAT Beh", f"{row['Agent Behaviour']}%"),
-                    ("⭐ Quality", f"{row['Quality']}%"),
-                    ("🧠 PKT", f"{row['PKT']}%")
+                performance_metrics = [
+                    ("📞 Call Volume", f"{row.get('LOGINS', 'N/A')} days"),
+                    ("📊 SL + UPL", row.get('SL + UPL', 'N/A')),
+                    ("⏱️ Avg Hold", row.get('Hold', 'N/A')),
+                    ("📝 Avg Wrap", row.get('Wrap', 'N/A')),
+                    ("🤖 Auto-On", row.get('Auto-On', 'N/A')),
+                    ("📅 Schedule Adh.", row.get('Schedule Adherence', 'N/A')),
+                    ("😊 CSAT Res", f"{row.get('Resolution CSAT', 'N/A')}%"),
+                    ("👍 CSAT Beh", f"{row.get('Agent Behaviour', 'N/A')}%"),
+                    ("✅ Quality", f"{row.get('Quality', 'N/A')}%"),
+                    ("🧠 PKT", f"{row.get('PKT', 'N/A')}%")
                 ]
                 
-                for i, (label, value) in enumerate(metrics):
-                    cols[i%4].metric(label, value)
+                for i, (label, value) in enumerate(performance_metrics):
+                    cols[i % 4].metric(label, value)
                 
-                # Show score
-                st.progress(row['Grand Total']/5)
-                st.metric("Overall Score", f"{row['Grand Total']}/5.0")
+                st.markdown("---")
+                st.subheader("📈 KPI Score Breakdown")
                 
-                # Show targets
-                with st.expander("View Targets"):
+                # Display KPI Scores
+                kpi_scores = [
+                    ("Hold KPI Score", row.get('Hold KPI Score', 'N/A')),
+                    ("Wrap KPI Score", row.get('Wrap KPI Score', 'N/A')),
+                    ("Auto-On KPI Score", row.get('Auto-On KPI Score', 'N/A')),
+                    ("Schedule Adherence KPI Score", row.get('Schedule Adherence KPI Score', 'N/A')),
+                    ("CSAT Res KPI Score", row.get('Resolution CSAT KPI Score', 'N/A')),
+                    ("CSAT Beh KPI Score", row.get('Agent Behaviour KPI Score', 'N/A')),
+                    ("Quality KPI Score", row.get('Quality KPI Score', 'N/A')),
+                    ("PKT KPI Score", row.get('PKT KPI Score', 'N/A'))
+                ]
+                
+                cols_kpi = st.columns(4)
+                for i, (label, value) in enumerate(kpi_scores):
+                    cols_kpi[i % 4].metric(label, value)
+
+                st.markdown("---")
+                
+                # Show Grand Total Score
+                st.progress(row['Grand Total'] / 5)
+                st.metric("🎯 Overall Score", f"{row['Grand Total']}/5.0")
+                
+                # Show Targets
+                with st.expander("🎯 View Targets"):
                     targets = [
                         ("PKT Target", row.get('Target Committed for PKT', 'N/A')),
                         ("CSAT Target", row.get('Target Committed for CSAT (Agent Behaviour)', 'N/A')),
                         ("Quality Target", row.get('Target Committed for Quality', 'N/A'))
                     ]
                     for target in targets:
-                        st.write(f"{target[0]}: {target[1]}")
+                        st.write(f"✅ **{target[0]}**: {target[1]}")
             else:
                 st.warning("No data found for this employee/month")
 
