@@ -25,9 +25,13 @@ st.markdown("""
         font-weight: bold;
         color: #3498db;
     }
-    .top-performer-score {
-        color: #27ae60;
-        font-weight: bold;
+    .top-performer-metric {
+        font-size: 0.9em;
+        margin-top: 5px;
+    }
+    .metric-label {
+        display: inline-block;
+        width: 100px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -44,7 +48,7 @@ def clean_percentage(val):
 
 # === NEW FUNCTION FOR TOP PERFORMERS ===
 def calculate_weighted_score(row):
-    """Calculate weighted score based on specified metrics and weightages"""
+    """Calculate weighted score based on specified metrics and weightages (used only for ranking)"""
     try:
         # Convert time metrics to seconds
         hold = safe_convert_time(row.get('Hold', 0))
@@ -75,7 +79,7 @@ def calculate_weighted_score(row):
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week):
-    """Identify top 5 performers for a given week"""
+    """Identify top 5 performers for a given week and return their actual metrics"""
     try:
         # Filter data for the selected week
         week_day_data = day_df[day_df['Week'] == str(week)].copy()
@@ -88,7 +92,8 @@ def get_weekly_top_performers(day_df, csat_df, week):
         weekly_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
             'Hold_sec': 'mean',
             'Wrap_sec': 'mean',
-            'Auto On_sec': 'mean'
+            'Auto On_sec': 'mean',
+            'Call Count': 'sum'
         }).reset_index()
         
         # Merge with CSAT data
@@ -99,15 +104,28 @@ def get_weekly_top_performers(day_df, csat_df, week):
             how='left'
         )
         
-        # Calculate scores
-        weekly_metrics['Weighted Score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
+        # Calculate scores for ranking only
+        weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
         # Get top 5 and format
-        top_performers = weekly_metrics.sort_values('Weighted Score', ascending=False).head(5)
-        top_performers = top_performers[['EMP ID', 'NAME', 'Weighted Score']]
-        top_performers['Weighted Score'] = top_performers['Weighted Score'].apply(lambda x: f"{x:.2f}")
+        top_performers = weekly_metrics.sort_values('_weighted_score', ascending=False).head(5)
         
-        return top_performers
+        # Convert times to readable format
+        def format_time(seconds):
+            if pd.isna(seconds) or seconds == 0:
+                return "00:00"
+            return str(timedelta(seconds=int(seconds))).split('.')[0]
+        
+        top_performers['Hold'] = top_performers['Hold_sec'].apply(format_time)
+        top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
+        top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
+        
+        # Format CSAT as percentages
+        for col in ['CSAT Behaviour', 'CSAT Resolution']:
+            if col in top_performers.columns:
+                top_performers[col] = top_performers[col].apply(lambda x: f"{x}%" if pd.notna(x) else 'N/A')
+        
+        return top_performers[['EMP ID', 'NAME', 'Hold', 'Wrap', 'Auto On', 'CSAT Behaviour', 'CSAT Resolution', 'Call Count']]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
@@ -217,7 +235,13 @@ if not day_df.empty and not csat_df.empty:
                     <div class="top-performer-card">
                         <div class="top-performer-rank">{emoji} Rank #{i}</div>
                         <div class="top-performer-name">{row['NAME']}</div>
-                        <div class="top-performer-score">Score: {row['Weighted Score']}</div>
+                        <div class="top-performer-metric">
+                            <span class="metric-label">Hold:</span> {row['Hold']}<br>
+                            <span class="metric-label">Wrap:</span> {row['Wrap']}<br>
+                            <span class="metric-label">Auto On:</span> {row['Auto On']}<br>
+                            <span class="metric-label">CSAT Beh:</span> {row.get('CSAT Behaviour', 'N/A')}<br>
+                            <span class="metric-label">CSAT Res:</span> {row.get('CSAT Resolution', 'N/A')}
+                        </div>
                     </div>
                     """,
                     unsafe_allow_html=True
