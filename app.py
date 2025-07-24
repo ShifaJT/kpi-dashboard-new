@@ -112,35 +112,13 @@ st.title("🏆 KPI Performance Dashboard")
 time_frame = st.radio("Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
-# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
     
     if not month_df.empty:
-        # Debug: Show raw month data
-        st.write("Debug - First 5 month values:", month_df['Month'].head().tolist())
-        
-        try:
-            # Try multiple date formats
-            month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%b-%y', errors='coerce')
-            
-            # If first format failed, try alternative formats
-            if month_df['Month_dt'].isna().all():
-                month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%B %Y', errors='coerce')
-            if month_df['Month_dt'].isna().all():
-                month_df['Month_dt'] = pd.to_datetime(month_df['Month'], format='%m/%d/%Y', errors='coerce')
-            
-            available_months = month_df['Month_dt'].dropna().unique()
-            if len(available_months) > 0:
-                available_months = sorted(available_months)
-                month_names = [month.strftime('%b-%y') for month in available_months]
-            else:
-                # Fallback to raw month values if no dates could be parsed
-                month_names = sorted(month_df['Month'].astype(str).unique())
-                st.warning("Using raw month values (couldn't parse as dates)")
-        except Exception as e:
-            st.error(f"Error processing months: {str(e)}")
-            month_names = sorted(month_df['Month'].astype(str).unique())
+        # Clean and prepare month data
+        month_df['Month'] = month_df['Month'].astype(str).str.strip()
+        month_names = sorted(month_df['Month'].unique())
         
         if len(month_names) == 0:
             st.error("No months found in the data. Please check your 'KPI Month' sheet.")
@@ -150,46 +128,115 @@ if time_frame == "Month":
             
             if emp_id and selected_month:
                 try:
-                    # Filter using both datetime and string versions
+                    # Filter data for selected month and employee
                     monthly_data = month_df[
                         (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                        (
-                            (month_df['Month_dt'].dt.strftime('%b-%y') == selected_month) |
-                            (month_df['Month'].astype(str).str.strip() == selected_month.strip())
-                        )
+                        (month_df['Month'].str.strip() == selected_month.strip())
                     ]
                     
                     if not monthly_data.empty:
                         row = monthly_data.iloc[0]
                         st.subheader(f"Performance for {row['NAME']} - {selected_month}")
                         
-                        # Performance Metrics Section
+                        # 1. Performance Metrics Section
                         st.markdown("### 📊 Performance Metrics")
                         cols = st.columns(4)
                         metrics = [
-                            ("⏱️ Hold Time", row.get('Hold', 'N/A')),
-                            ("📝 Wrap Time", row.get('Wrap', 'N/A')),
-                            ("🤖 Auto-On", row.get('Auto-On', 'N/A')),
-                            ("⏰ Schedule Adherence", f"{row.get('Schedule Adherence', 'N/A')}%"),
-                            ("😊 CSAT Resolution", f"{row.get('Resolution CSAT', 'N/A')}%"),
-                            ("👍 CSAT Behaviour", f"{row.get('Agent Behaviour', 'N/A')}%"),
-                            ("⭐ Quality", f"{row.get('Quality', 'N/A')}%"),
-                            ("🧠 PKT", f"{row.get('PKT', 'N/A')}%"),
-                            ("📅 SL + UPL", row.get('SL + UPL', 'N/A')),
-                            ("📞 Logins", row.get('LOGINS', 'N/A'))
+                            ("⏱️ Hold Time", clean_value(row.get('Hold'))),
+                            ("📝 Wrap Time", clean_value(row.get('Wrap'))),
+                            ("🤖 Auto-On", clean_value(row.get('Auto-On'))),
+                            ("⏰ Schedule Adherence", clean_percentage(row.get('Schedule Adherence'))),
+                            ("😊 CSAT Resolution", clean_percentage(row.get('Resolution CSAT'))),
+                            ("👍 CSAT Behaviour", clean_percentage(row.get('Agent Behaviour'))),
+                            ("⭐ Quality", clean_percentage(row.get('Quality'))),
+                            ("🧠 PKT", clean_percentage(row.get('PKT'))),
+                            ("📅 SL + UPL", clean_value(row.get('SL + UPL'))),
+                            ("📞 Logins", clean_value(row.get('LOGINS')))
                         ]
                         
                         for i, (label, value) in enumerate(metrics):
                             cols[i%4].metric(label, value)
+                        
+                        # 2. KPI Scores Section
+                        st.markdown("### 🎯 KPI Scores")
+                        kpi_cols = st.columns(4)
+                        kpi_metrics = [
+                            ("Hold KPI Score", clean_value(row.get('Hold KPI Score'))),
+                            ("Wrap KPI Score", clean_value(row.get('Wrap KPI Score'))),
+                            ("Auto-On KPI Score", clean_value(row.get('Auto-On KPI Score'))),
+                            ("Schedule KPI Score", clean_value(row.get('Schedule Adherence KPI Score'))),
+                            ("CSAT Res KPI Score", clean_value(row.get('Resolution CSAT KPI Score'))),
+                            ("CSAT Beh KPI Score", clean_value(row.get('Agent Behaviour KPI Score'))),
+                            ("Quality KPI Score", clean_value(row.get('Quality KPI Score'))),
+                            ("PKT KPI Score", clean_value(row.get('PKT KPI Score')))
+                        ]
+                        
+                        for i, (label, value) in enumerate(kpi_metrics):
+                            kpi_cols[i%4].metric(label, value)
+                        
+                        # 3. Grand Total KPI with Comparison
+                        if 'Grand Total' in row:
+                            current_score = float(row['Grand Total'])
+                            st.markdown("### 📈 Overall KPI Score")
+                            
+                            # Find previous month's score
+                            try:
+                                month_index = month_names.index(selected_month)
+                                if month_index > 0:
+                                    prev_month = month_names[month_index-1]
+                                    prev_data = month_df[
+                                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                                        (month_df['Month'].str.strip() == prev_month.strip())
+                                    ]
+                                    if not prev_data.empty:
+                                        prev_score = float(prev_data.iloc[0]['Grand Total'])
+                                        delta = current_score - prev_score
+                                        delta_label = f"{'↑' if delta >=0 else '↓'} {abs(delta):.1f}"
+                                    else:
+                                        delta = None
+                                else:
+                                    delta = None
+                            except:
+                                delta = None
+                            
+                            # Display with comparison if available
+                            if delta is not None:
+                                st.metric("Overall Score", 
+                                         f"{current_score:.1f}/5.0", 
+                                         delta_label,
+                                         delta_color="normal")
+                            else:
+                                st.metric("Overall Score", f"{current_score:.1f}/5.0")
+                            
+                            st.progress(current_score/5)
+                        
+                        # 4. Targets Committed Section
+                        st.markdown("### 🎯 Targets Committed")
+                        target_cols = st.columns(3)
+                        targets = [
+                            ("PKT Target", clean_value(row.get('Target Committed for PKT'))),
+                            ("CSAT Target", clean_value(row.get('Target Committed for CSAT (Agent Behaviour)'))),
+                            ("Quality Target", clean_value(row.get('Target Committed for Quality')))
+                        ]
+                        for i, (label, value) in enumerate(targets):
+                            target_cols[i].metric(label, value)
+                            
                     else:
                         st.warning("No data found for this employee/month")
                 except Exception as e:
-                    st.error(f"Error filtering data: {str(e)}")
+                    st.error(f"Error processing data: {str(e)}")
     else:
-        st.warning("Monthly data not loaded properly. Please check:")
-        st.write("- The sheet name is correct ('KPI Month')")
-        st.write("- You have view permissions for the sheet")
-        st.write("- The sheet contains data")
+        st.warning("Monthly data not loaded properly")
+
+# Helper functions to clean values
+def clean_value(val):
+    if pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
+        return 'N/A'
+    return str(val).replace('%', '').strip()
+
+def clean_percentage(val):
+    cleaned = clean_value(val)
+    return f"{cleaned}%" if cleaned != 'N/A' else 'N/A'
 
 # === WEEK VIEW ===
 elif time_frame == "Week":
