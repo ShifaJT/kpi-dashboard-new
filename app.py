@@ -182,111 +182,20 @@ elif time_frame == "Week":
             try:
                 # Get weekly call data
                 week_calls = day_df[
-                    (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                    (day_df["Week"] == selected_week)
-                ]
-                
-                # Get weekly CSAT
-                week_csat = csat_df[
-                    (csat_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
-                    (csat_df["Week"] == selected_week)
-                ]
-                
-                if not week_calls.empty:
-                    # Calculate metrics
-                    total_calls = int(week_calls["Call Count"].sum())
-                    avg_aht = str(timedelta(seconds=int(week_calls["AHT_sec"].mean())))[:-3]
-                    avg_hold = str(timedelta(seconds=int(week_calls["Hold_sec"].mean())))[:-3]
-                    avg_wrap = str(timedelta(seconds=int(week_calls["Wrap_sec"].mean())))[:-3]
-                    avg_auto = str(timedelta(seconds=int(week_calls["Auto On_sec"].mean())))[:-3]
-                    
-                    # Display metrics
-                    st.subheader(f"Week {selected_week} Performance")
-                    
-                    # Call Metrics
-                    st.markdown("### 📞 Call Metrics")
-                    cols = st.columns(4)
-                    call_metrics = [
-                        ("Total Calls", total_calls),
-                        ("Avg AHT", avg_aht),
-                        ("Avg Hold", avg_hold),
-                        ("Avg Wrap", avg_wrap),
-                        ("Avg Auto On", avg_auto)
-                    ]
-                    
-                    for i, (label, value) in enumerate(call_metrics):
-                        cols[i%4].metric(label, value)
-                    
-                    # CSAT Metrics if available
-                    if not week_csat.empty:
-                        st.markdown("### 😊 CSAT Metrics")
-                        csat_cols = st.columns(2)
-                        csat_metrics = [
-                            ("CSAT Resolution", f"{week_csat['CSAT Resolution'].mean():.1f}%"),
-                            ("CSAT Behaviour", f"{week_csat['CSAT Behaviour'].mean():.1f}%")
-                        ]
-                        for i, (label, value) in enumerate(csat_metrics):
-                            csat_cols[i].metric(label, value)
-                    
-                    # Daily Breakdown
-                    with st.expander("📅 View Daily Breakdown"):
-                        daily_data = week_calls.groupby('Date').agg({
-                            'Call Count': 'sum',
-                            'AHT_sec': 'mean',
-                            'Hold_sec': 'mean',
-                            'Wrap_sec': 'mean',
-                            'Auto On_sec': 'mean'
-                        }).reset_index()
-                        
-                        # Format time columns
-                        for col in ['AHT_sec', 'Hold_sec', 'Wrap_sec', 'Auto On_sec']:
-                            daily_data[col] = daily_data[col].apply(
-                                lambda x: str(timedelta(seconds=int(x)))[:-3] if pd.notnull(x) else '00:00'
-                            )
-                        
-                        st.dataframe(daily_data)
-                else:
-                    st.warning("No call data found for this employee/week")
-            except Exception as e:
-                st.error(f"Error processing weekly data: {str(e)}")
-    else:
-        st.warning("Weekly data not loaded properly")
-elif time_frame == "Week":
-    st.subheader("📅 Weekly Performance")
-    
-    if not day_df.empty and not csat_df.empty:
-        # Get available weeks from both dataframes
-        day_weeks = day_df['Week'].dropna().unique()
-        csat_weeks = csat_df['Week'].dropna().unique()
-        all_weeks = sorted(set(day_weeks) | set(csat_weeks))
-        
-        selected_week = st.selectbox("Select Week", all_weeks, key="week_select")
-        emp_id = st.text_input("Enter Employee ID", key="week_emp_id")
-        
-        if emp_id and selected_week:
-            try:
-                # Get weekly call data - exact week match
-                week_calls = day_df[
                     (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
                     (day_df["Week"].astype(str).str.strip() == str(selected_week).strip())
                 ].copy()
                 
-                # Clean numeric columns
-                week_calls['Call Count'] = week_calls['Call Count'].astype(str).str.replace(',', '').astype(float)
-                
-                # Get weekly CSAT
-                week_csat = csat_df[
-                    (csat_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
-                    (csat_df["Week"].astype(str).str.strip() == str(selected_week).strip())
-                ]
+                # Clean and convert numeric columns
+                week_calls['Call Count'] = pd.to_numeric(week_calls['Call Count'].astype(str).str.replace(',', ''), errors='coerce')
                 
                 if not week_calls.empty:
-                    # Calculate metrics with proper formatting
+                    # Calculate metrics
                     total_calls = int(week_calls["Call Count"].sum())
                     
                     def format_avg_time(col):
                         avg_sec = week_calls[f"{col}_sec"].mean()
-                        return str(timedelta(seconds=int(avg_sec)))[2:7]  # MM:SS format
+                        return str(timedelta(seconds=int(avg_sec))).split('.')[0]  # h:mm:ss format
                     
                     # Display metrics
                     st.subheader(f"Week {selected_week} Performance")
@@ -306,14 +215,17 @@ elif time_frame == "Week":
                         cols[i].metric(label, value)
                     
                     # CSAT Metrics if available
+                    week_csat = csat_df[
+                        (csat_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                        (csat_df["Week"].astype(str).str.strip() == str(selected_week).strip())
+                    ]
+                    
                     if not week_csat.empty:
                         st.markdown("### 😊 CSAT Metrics")
                         csat_cols = st.columns(2)
-                        csat_res = week_csat['CSAT Resolution'].mean()
-                        csat_beh = week_csat['CSAT Behaviour'].mean()
                         csat_metrics = [
-                            ("CSAT Resolution", f"{csat_res:.1f}%"),
-                            ("CSAT Behaviour", f"{csat_beh:.1f}%")
+                            ("CSAT Resolution", f"{week_csat['CSAT Resolution'].mean():.1f}%"),
+                            ("CSAT Behaviour", f"{week_csat['CSAT Behaviour'].mean():.1f}%")
                         ]
                         for i, (label, value) in enumerate(csat_metrics):
                             csat_cols[i].metric(label, value)
@@ -328,23 +240,19 @@ elif time_frame == "Week":
                 st.error(f"Error processing weekly data: {str(e)}")
     else:
         st.warning("Weekly data not loaded properly")
-        
+
 # === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
     
     if not day_df.empty:
-        # Show date selector first
         available_dates = sorted(day_df['Date'].dropna().unique())
         selected_date = st.selectbox("Select Date", available_dates, key="day_date_select")
-        
-        # Then show EMP ID input
         emp_id = st.text_input("Enter Employee ID", key="day_emp_id")
         
         if emp_id and selected_date:
-            # Filter the data
             daily_data = day_df[
-                (day_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) & 
+                (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
                 (day_df["Date"] == selected_date)
             ]
             
@@ -352,20 +260,19 @@ else:
                 row = daily_data.iloc[0]
                 st.subheader(f"Performance for {row['NAME']} on {selected_date}")
                 
-                # Format time
-                def format_time(seconds):
-                    return str(timedelta(seconds=int(seconds)))[:-3] if seconds > 0 else "00:00"
+                def format_time(time_val):
+                    if pd.isna(time_val) or time_val == 0:
+                        return "00:00:00"
+                    return str(timedelta(seconds=int(time_val))).split('.')[0]
                 
                 # Prepare metrics
                 cols = st.columns(4)
                 metrics = [
-                    ("📞 Calls", row.get('Call Count', 0)),
+                    ("📞 Calls", f"{int(row.get('Call Count', 0)):,}"),
                     ("⏱️ AHT", format_time(row.get('AHT_sec', 0))),
                     ("🕒 Hold", format_time(row.get('Hold_sec', 0))),
                     ("📝 Wrap", format_time(row.get('Wrap_sec', 0))),
-                    ("🤖 Auto On", format_time(row.get('Auto On_sec', 0))),
-                    ("😊 CSAT Res", f"{row.get('CSAT Resolution', 0)}%"),
-                    ("👍 CSAT Beh", f"{row.get('CSAT Behaviour', 0)}%")
+                    ("🤖 Auto On", format_time(row.get('Auto On_sec', 0)))
                 ]
                 
                 # Display metrics
@@ -373,13 +280,7 @@ else:
                     cols[i%4].metric(label, value)
                 
                 # Performance comment
-                call_count = row.get('Call Count', 0)
-                if isinstance(call_count, str):
-                    try:
-                        call_count = float(call_count)
-                    except:
-                        call_count = 0
-                
+                call_count = int(row.get('Call Count', 0))
                 if call_count > 50:
                     st.success("Excellent call volume today!")
                 elif call_count > 30:
@@ -388,5 +289,3 @@ else:
                     st.warning("Let's aim for more calls tomorrow")
             else:
                 st.warning("No data found for this employee/date")
-    else:
-        st.warning("Daily data not loaded properly")
