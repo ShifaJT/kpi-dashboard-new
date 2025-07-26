@@ -6,32 +6,57 @@ from google.oauth2.service_account import Credentials
 from datetime import datetime, timedelta
 import numpy as np
 
-# Add custom CSS for top performers section
+# Add custom CSS for top performers section with dark mode compatibility
 st.markdown("""
 <style>
     .top-performer-card {
-        background-color: #f8f9fa;
+        background-color: var(--background-color);
         border-radius: 10px;
         padding: 15px;
         margin-bottom: 10px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border: 1px solid var(--border-color);
     }
     .top-performer-rank {
         font-weight: bold;
-        color: #2c3e50;
+        color: var(--text-color);
         font-size: 1.2em;
     }
     .top-performer-name {
         font-weight: bold;
-        color: #3498db;
+        color: var(--primary-color);
     }
     .top-performer-metric {
         font-size: 0.9em;
         margin-top: 5px;
+        color: var(--text-color);
     }
     .metric-label {
         display: inline-block;
         width: 100px;
+        color: var(--text-color);
+    }
+    
+    [data-testid="stSidebar"] {
+        background-color: var(--sidebar-background) !important;
+    }
+    
+    :root {
+        --background-color: #f8f9fa;
+        --border-color: #ddd;
+        --text-color: #2c3e50;
+        --primary-color: #3498db;
+        --sidebar-background: #f8f9fa;
+    }
+    
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --background-color: #262730;
+            --border-color: #555;
+            --text-color: #f0f2f6;
+            --primary-color: #5dade2;
+            --sidebar-background: #262730;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -221,12 +246,13 @@ if not csat_df.empty:
 # === DISPLAY WEEKLY TOP PERFORMERS ===
 if not day_df.empty and not csat_df.empty:
     current_week = datetime.now().isocalendar()[1]
-    top_performers = get_weekly_top_performers(day_df, csat_df, current_week)
+    previous_week = current_week - 1 if current_week > 1 else 52  # Handle year transition
+    top_performers = get_weekly_top_performers(day_df, csat_df, previous_week)
     
     if not top_performers.empty:
         with st.sidebar:
-            st.header("🏆 Weekly Top Performers")
-            st.markdown(f"**📅 Week {current_week}**")
+            st.header("🏆 Previous Week Top Performers")
+            st.markdown(f"**📅 Week {previous_week}**")
             
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
                 emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
