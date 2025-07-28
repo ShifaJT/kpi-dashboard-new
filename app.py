@@ -278,12 +278,17 @@ st.title("📊 KPI Performance Dashboard")
 time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
 
     if not month_df.empty:
         month_df['Month'] = month_df['Month'].astype(str).str.strip()
-        month_names = sorted(month_df['Month'].unique())
+        
+        # Convert month names to datetime for proper sorting
+        month_df['Month_datetime'] = pd.to_datetime(month_df['Month'], format='%B', errors='coerce')
+        month_df = month_df.sort_values('Month_datetime')
+        month_names = month_df['Month'].unique().tolist()
 
         if len(month_names) == 0:
             st.error("❌ No months found in the data. Please check your 'KPI Month' sheet.")
@@ -386,7 +391,7 @@ if time_frame == "Month":
                     st.error(f"❌ Error processing data: {str(e)}")
     else:
         st.warning("⚠️ Monthly data not loaded properly")
-
+        
 # === WEEK VIEW ===
 elif time_frame == "Week":
     st.subheader("📅 Weekly Performance")
