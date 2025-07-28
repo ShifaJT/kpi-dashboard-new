@@ -457,6 +457,7 @@ elif time_frame == "Week":
         st.warning("⚠️ Weekly data not loaded properly")
 
 # === DAY VIEW ===
+# === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
     
@@ -480,16 +481,28 @@ else:
                         return "00:00:00"
                     return str(timedelta(seconds=int(time_val))).split('.')[0]
                 
-                cols = st.columns(4)
-                metrics = [
+                # First row of metrics
+                cols1 = st.columns(4)
+                metrics1 = [
                     ("📞 Calls", f"{int(row.get('Call Count', 0)):,}"),
-                    ("⏱️ AHT", format_time(row.get('AHT_sec', 0))),
-                    ("⏸️ Hold", format_time(row.get('Hold_sec', 0))),
-                    ("⏱️ Wrap", format_time(row.get('Wrap_sec', 0))),
-                    ("💻 Auto On", format_time(row.get('Auto On_sec', 0)))
+                    ("⏱️ AHT", format_time(safe_convert_time(row.get('AHT')))),
+                    ("⏸️ Hold", format_time(safe_convert_time(row.get('Hold')))),
+                    ("⏱️ Wrap", format_time(safe_convert_time(row.get('Wrap'))))
                 ]
-                for i, (label, value) in enumerate(metrics):
-                    cols[i%4].metric(label, value)
+                for i, (label, value) in enumerate(metrics1):
+                    cols1[i].metric(label, value)
+                
+                # Second row of metrics
+                cols2 = st.columns(4)
+                metrics2 = [
+                    ("💻 Auto On", format_time(safe_convert_time(row.get('Auto On')))),
+                    ("✅ CSAT Resolution", clean_percentage(row.get('CSAT Resolution'))),
+                    ("😊 CSAT Behaviour", clean_percentage(row.get('CSAT Behaviour'))),
+                    ("", "")  # Empty metric for layout
+                ]
+                for i, (label, value) in enumerate(metrics2):
+                    if label:  # Only show if label is not empty
+                        cols2[i].metric(label, value)
                 
                 call_count = int(row.get('Call Count', 0))
                 if call_count > 50:
@@ -500,3 +513,5 @@ else:
                     st.warning("💪 Let's aim for more calls tomorrow")
             else:
                 st.warning("⚠️ No data found for this employee/date")
+    else:
+        st.warning("⚠️ Daily data not loaded properly")
