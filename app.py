@@ -73,14 +73,13 @@ def clean_percentage(val):
 
 # === NEW FUNCTION FOR TOP PERFORMERS ===
 def calculate_weighted_score(row):
-    """Calculate weighted score based on specified metrics and weightages (used only for ranking)"""
+    """Calculate weighted score with specified weightages"""
     try:
         # Convert time metrics to seconds
-        hold = safe_convert_time(row.get('Hold', 0))
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
-        # Convert CSAT percentages
+        # Convert percentages
         csat_res = float(str(row.get('CSAT Resolution', '0')).replace('%', '')) if str(row.get('CSAT Resolution', '0')).replace('%', '').replace('.', '').isdigit() else 0
         csat_beh = float(str(row.get('CSAT Behaviour', '0')).replace('%', '')) if str(row.get('CSAT Behaviour', '0')).replace('%', '').replace('.', '').isdigit() else 0
         quality = float(str(row.get('CSAT Score', '0')).replace('%', '')) if str(row.get('CSAT Score', '0')).replace('%', '').replace('.', '').isdigit() else 0
@@ -89,13 +88,13 @@ def calculate_weighted_score(row):
         wrap_score = max(0, 100 - (wrap / 120 * 100)) if wrap > 0 else 100
         auto_on_score = min(100, (auto_on / (8*3600) * 100)) if auto_on > 0 else 0
         
-        # Calculate weighted score with new weightages
+        # Calculate weighted score with specified weightages
         weighted_score = (
-            (wrap_score * 0.05) + 
-            (auto_on_score * 0.35) + 
-            (csat_res * 0.10) + 
-            (csat_beh * 0.20) + 
-            (quality * 0.30)
+            (wrap_score * 0.05) +      # Wrap Up 5%
+            (auto_on_score * 0.35) +   # Auto-On 35%
+            (csat_res * 0.10) +        # Resolution CSAT 10%
+            (csat_beh * 0.20) +        # Agent Behaviour 20%
+            (quality * 0.30)           # Quality 30%
         )
         
         return round(weighted_score, 2)
@@ -104,7 +103,7 @@ def calculate_weighted_score(row):
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week):
-    """Identify top 5 performers for a given week and return their actual metrics"""
+    """Identify top performers for a given week"""
     try:
         # Filter data for the selected week
         week_day_data = day_df[day_df['Week'] == str(week)].copy()
@@ -115,21 +114,24 @@ def get_weekly_top_performers(day_df, csat_df, week):
         
         # Group by employee and calculate averages
         weekly_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
-            'Hold_sec': 'mean',
             'Wrap_sec': 'mean',
             'Auto On_sec': 'mean',
             'Call Count': 'sum'
         }).reset_index()
         
         # Merge with CSAT data (including Quality score)
+        csat_columns = ['EMP ID', 'CSAT Resolution', 'CSAT Behaviour']
+        if 'CSAT Score' in week_csat_data.columns:
+            csat_columns.append('CSAT Score')
+        
         weekly_metrics = pd.merge(
             weekly_metrics,
-            week_csat_data[['EMP ID', 'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']],
+            week_csat_data[csat_columns],
             on='EMP ID',
             how='left'
         )
         
-        # Calculate scores for ranking only
+        # Calculate scores for ranking
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
         # Get top 5 and format
@@ -141,17 +143,20 @@ def get_weekly_top_performers(day_df, csat_df, week):
                 return "00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
-        top_performers['Hold'] = top_performers['Hold_sec'].apply(format_time)
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
         top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
         
         # Format scores as percentages
         for col in ['CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']:
             if col in top_performers.columns:
-                top_performers[col] = top_performers[col].apply(lambda x: f"{x}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A')
+                top_performers[col] = top_performers[col].apply(
+                    lambda x: f"{x}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
+                )
+            else:
+                top_performers[col] = 'N/A'
         
-        return top_performers[['EMP ID', 'NAME', 'Hold', 'Wrap', 'Auto On', 
-                              'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score', 'Call Count']]
+        return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
+                              'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score', '_weighted_score']]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
@@ -233,28 +238,28 @@ def safe_convert_time(time_val):
 if not day_df.empty:
     day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
     day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
-    time_cols = ['AHT', 'Wrap', 'Hold', 'Auto On']
-    for col in time_cols:
+    for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
         if col in day_df.columns:
             day_df[f"{col}_sec"] = day_df[col].apply(safe_convert_time)
 
 if not csat_df.empty:
     csat_df['Week'] = csat_df['Week'].astype(str)
-    for col in ['CSAT Resolution', 'CSAT Behaviour']:
+    for col in ['CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']:
         if col in csat_df.columns:
             csat_df[col] = pd.to_numeric(csat_df[col].astype(str).str.replace('%', ''), errors='coerce')
 
 # === DISPLAY WEEKLY TOP PERFORMERS ===
 if not day_df.empty and not csat_df.empty:
     current_week = datetime.now().isocalendar()[1]
-    previous_week = current_week - 1 if current_week > 1 else 52  # Handle year transition
-    top_performers = get_weekly_top_performers(day_df, csat_df, previous_week)
+    previous_week = current_week - 1 if current_week > 1 else 52
     
-    if not top_performers.empty:
-        with st.sidebar:
-            st.header("🏆 Previous Week Top Performers")
-            st.markdown(f"**📅 Week {previous_week}**")
-            
+    with st.sidebar:
+        st.header("🏆 Previous Week Top Performers")
+        st.markdown(f"**📅 Week {previous_week}**")
+        
+        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week)
+        
+        if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
                 emoji = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else "🎖️"
                 st.markdown(
@@ -263,17 +268,19 @@ if not day_df.empty and not csat_df.empty:
                         <div class="top-performer-rank">{emoji} Rank #{i}</div>
                         <div class="top-performer-name">{row['NAME']}</div>
                         <div class="top-performer-metric">
-                            <span class="metric-label">⏱️ Hold:</span> {row['Hold']}<br>
                             <span class="metric-label">⏱️ Wrap:</span> {row['Wrap']}<br>
                             <span class="metric-label">💻 Auto On:</span> {row['Auto On']}<br>
-                            <span class="metric-label">✅ CSAT Res:</span> {row.get('CSAT Resolution', 'N/A')}<br>
-                            <span class="metric-label">😊 CSAT Beh:</span> {row.get('CSAT Behaviour', 'N/A')}<br>
-                            <span class="metric-label">⭐ Quality:</span> {row.get('CSAT Score', 'N/A')}
+                            <span class="metric-label">✅ CSAT Res:</span> {row['CSAT Resolution']}<br>
+                            <span class="metric-label">😊 CSAT Beh:</span> {row['CSAT Behaviour']}<br>
+                            <span class="metric-label">⭐ Quality:</span> {row['CSAT Score']}<br>
+                            <span class="metric-label">🏆 Score:</span> {row['_weighted_score']}
                         </div>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
+        else:
+            st.warning("No top performers data available for this week")
 
 # === DASHBOARD UI ===
 st.title("📊 KPI Performance Dashboard")
@@ -440,12 +447,19 @@ elif time_frame == "Week":
                     ]
                     if not week_csat.empty:
                         st.markdown("### 😊 CSAT Metrics")
-                        csat_cols = st.columns(3)
-                        csat_metrics = [
-                            ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
-                            ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
-                            ("⭐ Quality Score", clean_percentage(week_csat['CSAT Score'].mean()))
-                        ]
+                        if 'CSAT Score' in week_csat.columns:
+                            csat_cols = st.columns(3)
+                            csat_metrics = [
+                                ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
+                                ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
+                                ("⭐ Quality Score", clean_percentage(week_csat['CSAT Score'].mean()))
+                            ]
+                        else:
+                            csat_cols = st.columns(2)
+                            csat_metrics = [
+                                ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
+                                ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean()))
+                            ]
                         for i, (label, value) in enumerate(csat_metrics):
                             csat_cols[i].metric(label, value)
                     
@@ -458,8 +472,7 @@ elif time_frame == "Week":
                 st.error(f"❌ Error processing weekly data: {str(e)}")
     else:
         st.warning("⚠️ Weekly data not loaded properly")
-
-# === DAY VIEW ===
+        
 # === DAY VIEW ===
 else:
     st.subheader("📅 Daily Performance")
