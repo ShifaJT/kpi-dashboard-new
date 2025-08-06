@@ -67,112 +67,93 @@ def clean_value(val):
         return 'N/A'
     return str(val).replace('%', '').strip()
 
-def clean_percentage(val):
-    cleaned = clean_value(val)
-    return f"{cleaned}%" if cleaned != 'N/A' else 'N/A'
+def clean_percentage_value(val):
+    """Safely convert percentage strings to floats"""
+    if pd.isna(val) or str(val).strip() in ['', 'nan', 'None', 'N/A']:
+        return 0.0
+    try:
+        return float(str(val).replace('%', '').strip())
+    except:
+        return 0.0
 
 # === NEW FUNCTION FOR TOP PERFORMERS ===
 def calculate_weighted_score(row):
-    """Calculate weighted score with specified weightages"""
+    """Calculate weighted score with proper percentage handling"""
     try:
-        # Convert time metrics to seconds
+        # Convert time metrics
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
-        # Helper function to clean percentage values
-        def clean_percentage(value):
-            if pd.isna(value) or str(value).strip() in ['', 'nan', 'None', 'N/A']:
-                return 0.0
-            value_str = str(value).replace('%', '').strip()
-            try:
-                return float(value_str)
-            except:
-                return 0.0
+        # Convert percentages safely
+        csat_res = clean_percentage_value(row.get('CSAT Resolution', 0))
+        csat_beh = clean_percentage_value(row.get('CSAT Behaviour', 0))
+        quality = clean_percentage_value(row.get('Quality Score', 0))  # Using correct column name
         
-        # Convert percentages using the cleaner function
-        csat_res = clean_percentage(row.get('CSAT Resolution', 0))
-        csat_beh = clean_percentage(row.get('CSAT Behaviour', 0))
-        quality = clean_percentage(row.get('Quality Score', 0))  # Changed from 'CSAT Score' to 'Quality Score'
-        
-        # Normalize time metrics (lower is better)
+        # Normalize metrics
         wrap_score = max(0, 100 - (wrap / 120 * 100)) if wrap > 0 else 100
         auto_on_score = min(100, (auto_on / (8*3600) * 100)) if auto_on > 0 else 0
         
         # Calculate weighted score
-        weighted_score = (
-            (wrap_score * 0.05) +      # Wrap Up 5%
-            (auto_on_score * 0.35) +   # Auto-On 35%
-            (csat_res * 0.10) +        # Resolution CSAT 10%
-            (csat_beh * 0.20) +        # Agent Behaviour 20%
-            (quality * 0.30)           # Quality 30%
-        )
-        
-        return round(weighted_score, 2)
+        return round((
+            (wrap_score * 0.05) + 
+            (auto_on_score * 0.35) +
+            (csat_res * 0.10) +
+            (csat_beh * 0.20) +
+            (quality * 0.30)
+        ), 2)
     except Exception as e:
-        st.error(f"Error calculating score: {str(e)}")
+        st.error(f"Score calculation error: {str(e)}")
         return 0
         
 def get_weekly_top_performers(day_df, csat_df, week):
-    """Identify top performers for a given week"""
+    """Identify top performers with robust data handling"""
     try:
-        # Filter data for the selected week
-        week_day_data = day_df[day_df['Week'] == str(week)].copy()
-        week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
+        # Filter week data
+        week_day = day_df[day_df['Week'] == str(week)].copy()
+        week_csat = csat_df[csat_df['Week'] == str(week)].copy()
         
-        if week_day_data.empty or week_csat_data.empty:
+        if week_day.empty or week_csat.empty:
             return pd.DataFrame()
         
-        # Group by employee and calculate averages
-        weekly_metrics = week_day_data.groupby(['EMP ID', 'NAME']).agg({
+        # Group metrics
+        weekly_metrics = week_day.groupby(['EMP ID', 'NAME']).agg({
             'Wrap_sec': 'mean',
             'Auto On_sec': 'mean',
             'Call Count': 'sum'
         }).reset_index()
         
-        # Ensure we're using the correct column name for Quality score
-        csat_columns = ['EMP ID', 'CSAT Resolution', 'CSAT Behaviour']
-        quality_column = 'Quality Score'  # This should match your sheet column name
-        
-        if quality_column in week_csat_data.columns:
-            csat_columns.append(quality_column)
-        
         # Merge with CSAT data
+        csat_cols = ['EMP ID', 'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']
         weekly_metrics = pd.merge(
             weekly_metrics,
-            week_csat_data[csat_columns],
+            week_csat[csat_cols],
             on='EMP ID',
             how='left'
         )
         
-        # Calculate scores for ranking (without displaying the score)
+        # Calculate scores
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
-        # Get top 5 and format
+        # Format output
         top_performers = weekly_metrics.sort_values('_weighted_score', ascending=False).head(5)
+        top_performers['Wrap'] = top_performers['Wrap_sec'].apply(
+            lambda x: str(timedelta(seconds=int(x))).split('.')[0] if pd.notna(x) else "00:00"
+        )
+        top_performers['Auto On'] = top_performers['Auto On_sec'].apply(
+            lambda x: str(timedelta(seconds=int(x))).split('.')[0] if pd.notna(x) else "00:00"
+        )
         
-        # Convert times to readable format
-        def format_time(seconds):
-            if pd.isna(seconds) or seconds == 0:
-                return "00:00"
-            return str(timedelta(seconds=int(seconds))).split('.')[0]
-        
-        top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
-        top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
-        
-        # Format scores as percentages
-        for col in ['CSAT Resolution', 'CSAT Behaviour', quality_column]:
-            if col in top_performers.columns:
-                top_performers[col] = top_performers[col].apply(
-                    lambda x: f"{float(x):.1f}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
-                )
-            elif col == quality_column:
-                top_performers[col] = 'N/A'
+        # Format percentages
+        for col in ['CSAT Resolution', 'CSAT Behaviour', 'Quality Score']:
+            top_performers[col] = top_performers[col].apply(
+                lambda x: f"{x:.1f}%" if pd.notna(x) else 'N/A'
+            )
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
-                              'CSAT Resolution', 'CSAT Behaviour', quality_column]]
+                             'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
     except Exception as e:
-        st.error(f"Error identifying top performers: {str(e)}")
-        return pd.DataFrame()
+        st.error(f"Top performers error: {str(e)}")
+        return pd.DataFrame()    
         
 # === CONFIGURATION ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
