@@ -300,6 +300,7 @@ st.title("📊 KPI Performance Dashboard")
 time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
 
@@ -328,19 +329,31 @@ if time_frame == "Month":
                         row = monthly_data.iloc[0]
                         st.subheader(f"📈 Performance for {row['NAME']} - {selected_month}")
 
+                        # Clean percentage values before display
+                        def get_clean_value(col_name):
+                            val = row.get(col_name, 'N/A')
+                            if pd.isna(val) or str(val).strip() in ['', 'nan', 'None']:
+                                return 'N/A'
+                            try:
+                                if '%' in str(val):
+                                    return f"{float(str(val).replace('%', '')):.1f}%"
+                                return str(val)
+                            except:
+                                return 'N/A'
+
                         st.markdown("### 📊 Performance Metrics")
                         cols = st.columns(4)
                         metrics = [
-                            ("⏱️ Hold Time", clean_value(row.get('Hold'))),
-                            ("⏱️ Wrap Time", clean_value(row.get('Wrap'))),
-                            ("💻 Auto-On", clean_value(row.get('Auto-On'))),
-                            ("⏰ Schedule Adherence", format_percentage(row.get('Schedule Adherence'))),
-                            ("✅ CSAT Resolution", format_percentage(row.get('Resolution CSAT'))),
-                            ("😊 CSAT Behaviour", format_percentage(row.get('Agent Behaviour'))),
-                            ("⭐ Quality", format_percentage(row.get('Quality'))),
-                            ("📞 PKT", format_percentage(row.get('PKT'))),
-                            ("📶 SL + UPL", clean_value(row.get('SL + UPL'))),
-                            ("🔑 Logins", clean_value(row.get('LOGINS')))
+                            ("⏱️ Hold Time", get_clean_value('Hold')),
+                            ("⏱️ Wrap Time", get_clean_value('Wrap')),
+                            ("💻 Auto-On", get_clean_value('Auto-On')),
+                            ("⏰ Schedule Adherence", get_clean_value('Schedule Adherence')),
+                            ("✅ CSAT Resolution", get_clean_value('Resolution CSAT')),
+                            ("😊 CSAT Behaviour", get_clean_value('Agent Behaviour')),
+                            ("⭐ Quality", get_clean_value('Quality')),
+                            ("📞 PKT", get_clean_value('PKT')),
+                            ("📶 SL + UPL", get_clean_value('SL + UPL')),
+                            ("🔑 Logins", get_clean_value('LOGINS'))
                         ]
                         for i, (label, value) in enumerate(metrics):
                             cols[i % 4].metric(label, value)
@@ -348,60 +361,63 @@ if time_frame == "Month":
                         st.markdown("### 🎯 KPI Scores")
                         kpi_cols = st.columns(4)
                         kpi_metrics = [
-                            ("⏱️ Hold KPI Score", clean_value(row.get('Hold KPI Score'))),
-                            ("⏱️ Wrap KPI Score", clean_value(row.get('Wrap KPI Score'))),
-                            ("💻 Auto-On KPI Score", clean_value(row.get('Auto-On KPI Score'))),
-                            ("⏰ Schedule KPI Score", clean_value(row.get('Schedule Adherence KPI Score'))),
-                            ("✅ CSAT Res KPI Score", clean_value(row.get('Resolution CSAT KPI Score'))),
-                            ("😊 CSAT Beh KPI Score", clean_value(row.get('Agent Behaviour KPI Score'))),
-                            ("⭐ Quality KPI Score", clean_value(row.get('Quality KPI Score'))),
-                            ("📞 PKT KPI Score", clean_value(row.get('PKT KPI Score')))
+                            ("⏱️ Hold KPI Score", get_clean_value('Hold KPI Score')),
+                            ("⏱️ Wrap KPI Score", get_clean_value('Wrap KPI Score')),
+                            ("💻 Auto-On KPI Score", get_clean_value('Auto-On KPI Score')),
+                            ("⏰ Schedule KPI Score", get_clean_value('Schedule Adherence KPI Score')),
+                            ("✅ CSAT Res KPI Score", get_clean_value('Resolution CSAT KPI Score')),
+                            ("😊 CSAT Beh KPI Score", get_clean_value('Agent Behaviour KPI Score')),
+                            ("⭐ Quality KPI Score", get_clean_value('Quality KPI Score')),
+                            ("📞 PKT KPI Score", get_clean_value('PKT KPI Score')))
                         ]
                         for i, (label, value) in enumerate(kpi_metrics):
                             kpi_cols[i % 4].metric(label, value)
 
                         if 'Grand Total' in row:
-                            current_score = float(row['Grand Total'])
-                            st.markdown("### 📈 Overall KPI Score")
                             try:
-                                month_index = month_names.index(selected_month)
-                                if month_index > 0:
-                                    prev_month = month_names[month_index - 1]
-                                    prev_data = month_df[
-                                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
-                                        (month_df['Month'].str.strip() == prev_month.strip())
-                                    ]
-                                    if not prev_data.empty:
-                                        prev_score = float(prev_data.iloc[0]['Grand Total'])
-                                        delta = current_score - prev_score
-                                        delta_label = f"{'↑' if delta >= 0 else '↓'} {abs(delta):.1f}"
+                                current_score = float(str(row['Grand Total']).replace('%', ''))
+                                st.markdown("### 📈 Overall KPI Score")
+                                try:
+                                    month_index = month_names.index(selected_month)
+                                    if month_index > 0:
+                                        prev_month = month_names[month_index - 1]
+                                        prev_data = month_df[
+                                            (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
+                                            (month_df['Month'].str.strip() == prev_month.strip())
+                                        ]
+                                        if not prev_data.empty:
+                                            prev_score = float(str(prev_data.iloc[0]['Grand Total']).replace('%', ''))
+                                            delta = current_score - prev_score
+                                            delta_label = f"{'↑' if delta >= 0 else '↓'} {abs(delta):.1f}"
+                                        else:
+                                            delta = None
                                     else:
                                         delta = None
-                                else:
+                                except:
                                     delta = None
-                            except:
-                                delta = None
 
-                            if delta is not None:
-                                st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
-                                if delta > 0:
-                                    st.markdown(f"📈 **{abs(delta):.1f} improved from last month.**")
-                                    st.success("🎉 Keep up the great work and continue the momentum! ")
-                                elif delta < 0:
-                                    st.markdown(f"📉 **{abs(delta):.1f} dropped from last month.**")
-                                    st.warning("💪 Let's focus on areas of improvement and bounce back stronger! ")
-                            else:
-                                st.metric("Overall Score", f"{current_score:.1f}/5.0")
-                                st.info("ℹ️ No data from the previous month to compare.")
+                                if delta is not None:
+                                    st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
+                                    if delta > 0:
+                                        st.markdown(f"📈 **{abs(delta):.1f} improved from last month.**")
+                                        st.success("🎉 Keep up the great work and continue the momentum! ")
+                                    elif delta < 0:
+                                        st.markdown(f"📉 **{abs(delta):.1f} dropped from last month.**")
+                                        st.warning("💪 Let's focus on areas of improvement and bounce back stronger! ")
+                                else:
+                                    st.metric("Overall Score", f"{current_score:.1f}/5.0")
+                                    st.info("ℹ️ No data from the previous month to compare.")
 
-                            st.progress(current_score / 5)
+                                st.progress(current_score / 5)
+                            except ValueError:
+                                st.error("Could not convert Grand Total to numeric value")
 
                         st.markdown("### 🎯 Targets Committed")
                         target_cols = st.columns(3)
                         targets = [
-                            ("📞 PKT Target", clean_value(row.get('Target Committed for PKT'))),
-                            ("😊 CSAT Target", clean_value(row.get('Target Committed for CSAT (Agent Behaviour)'))),
-                            ("⭐ Quality Target", clean_value(row.get('Target Committed for Quality')))
+                            ("📞 PKT Target", get_clean_value('Target Committed for PKT')),
+                            ("😊 CSAT Target", get_clean_value('Target Committed for CSAT (Agent Behaviour)')),
+                            ("⭐ Quality Target", get_clean_value('Target Committed for Quality'))
                         ]
                         for i, (label, value) in enumerate(targets):
                             target_cols[i].metric(label, value)
