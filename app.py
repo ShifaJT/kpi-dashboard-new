@@ -150,7 +150,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
         top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
         
         # Format scores as percentages
-        for col in ['CSAT Resolution', 'CSAT Behaviour', quality_column]:
+        for col in ['CSAT Resolution', 'CSAT Behaviour', 'Quality Score']:
             if col in top_performers.columns:
                 top_performers[col] = top_performers[col].apply(
                     lambda x: f"{float(x):.1f}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
@@ -159,7 +159,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
                 top_performers[col] = 'N/A'
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
-                              'CSAT Resolution', 'CSAT Behaviour', quality_column]]
+                              'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
@@ -456,7 +456,7 @@ elif time_frame == "Week":
                             csat_metrics = [
                                 ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
                                 ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
-                                ("⭐ Quality Score", clean_percentage(week_csat[quality_column].mean()))
+                                ("⭐ Quality Score", clean_percentage(week_csat['Quality Score'].mean()))
                             ]
                         else:
                             csat_cols = st.columns(2)
