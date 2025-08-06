@@ -119,11 +119,14 @@ def get_weekly_top_performers(day_df, csat_df, week):
             'Call Count': 'sum'
         }).reset_index()
         
-        # Merge with CSAT data (including Quality score)
+        # Ensure we're using the correct column name for Quality score
         csat_columns = ['EMP ID', 'CSAT Resolution', 'CSAT Behaviour']
-        if 'CSAT Score' in week_csat_data.columns:
-            csat_columns.append('CSAT Score')
+        quality_column = 'CSAT Score'  # This should match your sheet column name
         
+        if quality_column in week_csat_data.columns:
+            csat_columns.append(quality_column)
+        
+        # Merge with CSAT data
         weekly_metrics = pd.merge(
             weekly_metrics,
             week_csat_data[csat_columns],
@@ -131,7 +134,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
             how='left'
         )
         
-        # Calculate scores for ranking
+        # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
         # Get top 5 and format
@@ -147,20 +150,20 @@ def get_weekly_top_performers(day_df, csat_df, week):
         top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
         
         # Format scores as percentages
-        for col in ['CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']:
+        for col in ['CSAT Resolution', 'CSAT Behaviour', quality_column]:
             if col in top_performers.columns:
                 top_performers[col] = top_performers[col].apply(
-                    lambda x: f"{x}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
+                    lambda x: f"{float(x):.1f}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
                 )
-            else:
+            elif col == quality_column:
                 top_performers[col] = 'N/A'
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
-                              'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score', '_weighted_score']]
+                              'CSAT Resolution', 'CSAT Behaviour', quality_column]]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
-
+        
 # === CONFIGURATION ===
 SHEET_ID = "19aDfELEExMn0loj_w6D69ngGG4haEm6lsgqpxJC1OAA"
 SHEET_MONTH = "KPI Month"
@@ -249,7 +252,7 @@ if not csat_df.empty:
             csat_df[col] = pd.to_numeric(csat_df[col].astype(str).str.replace('%', ''), errors='coerce')
 
 # === DISPLAY WEEKLY TOP PERFORMERS ===
-if not day_df.empty and not csat_df.empty:
+iif not day_df.empty and not csat_df.empty:
     current_week = datetime.now().isocalendar()[1]
     previous_week = current_week - 1 if current_week > 1 else 52
     
@@ -272,8 +275,7 @@ if not day_df.empty and not csat_df.empty:
                             <span class="metric-label">💻 Auto On:</span> {row['Auto On']}<br>
                             <span class="metric-label">✅ CSAT Res:</span> {row['CSAT Resolution']}<br>
                             <span class="metric-label">😊 CSAT Beh:</span> {row['CSAT Behaviour']}<br>
-                            <span class="metric-label">⭐ Quality:</span> {row['CSAT Score']}<br>
-                            <span class="metric-label">🏆 Score:</span> {row['_weighted_score']}
+                            <span class="metric-label">⭐ Quality:</span> {row['CSAT Score']}
                         </div>
                     </div>
                     """,
@@ -447,12 +449,14 @@ elif time_frame == "Week":
                     ]
                     if not week_csat.empty:
                         st.markdown("### 😊 CSAT Metrics")
-                        if 'CSAT Score' in week_csat.columns:
+                        # Check if Quality score exists for this week
+                        quality_column = 'CSAT Score'
+                        if quality_column in week_csat.columns:
                             csat_cols = st.columns(3)
                             csat_metrics = [
                                 ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
                                 ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
-                                ("⭐ Quality Score", clean_percentage(week_csat['CSAT Score'].mean()))
+                                ("⭐ Quality Score", clean_percentage(week_csat[quality_column].mean()))
                             ]
                         else:
                             csat_cols = st.columns(2)
