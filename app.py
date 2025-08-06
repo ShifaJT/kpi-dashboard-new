@@ -81,21 +81,21 @@ def calculate_weighted_score(row):
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
         # Convert CSAT percentages
-        csat_beh = float(str(row.get('CSAT Behaviour', '0')).replace('%', '')) if str(row.get('CSAT Behaviour', '0')).replace('%', '').replace('.', '').isdigit() else 0
         csat_res = float(str(row.get('CSAT Resolution', '0')).replace('%', '')) if str(row.get('CSAT Resolution', '0')).replace('%', '').replace('.', '').isdigit() else 0
+        csat_beh = float(str(row.get('CSAT Behaviour', '0')).replace('%', '')) if str(row.get('CSAT Behaviour', '0')).replace('%', '').replace('.', '').isdigit() else 0
+        quality = float(str(row.get('CSAT Score', '0')).replace('%', '')) if str(row.get('CSAT Score', '0')).replace('%', '').replace('.', '').isdigit() else 0
         
         # Normalize time metrics (lower is better)
-        hold_score = max(0, 100 - (hold / 60 * 100)) if hold > 0 else 100
         wrap_score = max(0, 100 - (wrap / 120 * 100)) if wrap > 0 else 100
         auto_on_score = min(100, (auto_on / (8*3600) * 100)) if auto_on > 0 else 0
         
-        # Calculate weighted score (call count not included as per 0% weightage)
+        # Calculate weighted score with new weightages
         weighted_score = (
-            (hold_score * 0.05) + 
             (wrap_score * 0.05) + 
-            (csat_beh * 0.25) + 
-            (csat_res * 0.25) + 
-            (auto_on_score * 0.40)
+            (auto_on_score * 0.35) + 
+            (csat_res * 0.10) + 
+            (csat_beh * 0.20) + 
+            (quality * 0.30)
         )
         
         return round(weighted_score, 2)
@@ -121,10 +121,10 @@ def get_weekly_top_performers(day_df, csat_df, week):
             'Call Count': 'sum'
         }).reset_index()
         
-        # Merge with CSAT data
+        # Merge with CSAT data (including Quality score)
         weekly_metrics = pd.merge(
             weekly_metrics,
-            week_csat_data[['EMP ID', 'CSAT Behaviour', 'CSAT Resolution']],
+            week_csat_data[['EMP ID', 'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']],
             on='EMP ID',
             how='left'
         )
@@ -145,12 +145,13 @@ def get_weekly_top_performers(day_df, csat_df, week):
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
         top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
         
-        # Format CSAT as percentages
-        for col in ['CSAT Behaviour', 'CSAT Resolution']:
+        # Format scores as percentages
+        for col in ['CSAT Resolution', 'CSAT Behaviour', 'CSAT Score']:
             if col in top_performers.columns:
-                top_performers[col] = top_performers[col].apply(lambda x: f"{x}%" if pd.notna(x) else 'N/A')
+                top_performers[col] = top_performers[col].apply(lambda x: f"{x}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A')
         
-        return top_performers[['EMP ID', 'NAME', 'Hold', 'Wrap', 'Auto On', 'CSAT Behaviour', 'CSAT Resolution', 'Call Count']]
+        return top_performers[['EMP ID', 'NAME', 'Hold', 'Wrap', 'Auto On', 
+                              'CSAT Resolution', 'CSAT Behaviour', 'CSAT Score', 'Call Count']]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
@@ -265,8 +266,9 @@ if not day_df.empty and not csat_df.empty:
                             <span class="metric-label">⏱️ Hold:</span> {row['Hold']}<br>
                             <span class="metric-label">⏱️ Wrap:</span> {row['Wrap']}<br>
                             <span class="metric-label">💻 Auto On:</span> {row['Auto On']}<br>
+                            <span class="metric-label">✅ CSAT Res:</span> {row.get('CSAT Resolution', 'N/A')}<br>
                             <span class="metric-label">😊 CSAT Beh:</span> {row.get('CSAT Behaviour', 'N/A')}<br>
-                            <span class="metric-label">✅ CSAT Res:</span> {row.get('CSAT Resolution', 'N/A')}
+                            <span class="metric-label">⭐ Quality:</span> {row.get('CSAT Score', 'N/A')}
                         </div>
                     </div>
                     """,
@@ -438,10 +440,11 @@ elif time_frame == "Week":
                     ]
                     if not week_csat.empty:
                         st.markdown("### 😊 CSAT Metrics")
-                        csat_cols = st.columns(2)
+                        csat_cols = st.columns(3)
                         csat_metrics = [
-                            ("✅ CSAT Resolution", f"{week_csat['CSAT Resolution'].mean():.1f}%"),
-                            ("😊 CSAT Behaviour", f"{week_csat['CSAT Behaviour'].mean():.1f}%")
+                            ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
+                            ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
+                            ("⭐ Quality Score", clean_percentage(week_csat['CSAT Score'].mean()))
                         ]
                         for i, (label, value) in enumerate(csat_metrics):
                             csat_cols[i].metric(label, value)
