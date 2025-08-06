@@ -79,16 +79,26 @@ def calculate_weighted_score(row):
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
-        # Convert percentages
-        csat_res = float(str(row.get('CSAT Resolution', '0')).replace('%', '')) if str(row.get('CSAT Resolution', '0')).replace('%', '').replace('.', '').isdigit() else 0
-        csat_beh = float(str(row.get('CSAT Behaviour', '0')).replace('%', '')) if str(row.get('CSAT Behaviour', '0')).replace('%', '').replace('.', '').isdigit() else 0
-        quality = float(str(row.get('CSAT Score', '0')).replace('%', '')) if str(row.get('CSAT Score', '0')).replace('%', '').replace('.', '').isdigit() else 0
+        # Helper function to clean percentage values
+        def clean_percentage(value):
+            if pd.isna(value) or str(value).strip() in ['', 'nan', 'None', 'N/A']:
+                return 0.0
+            value_str = str(value).replace('%', '').strip()
+            try:
+                return float(value_str)
+            except:
+                return 0.0
+        
+        # Convert percentages using the cleaner function
+        csat_res = clean_percentage(row.get('CSAT Resolution', 0))
+        csat_beh = clean_percentage(row.get('CSAT Behaviour', 0))
+        quality = clean_percentage(row.get('Quality Score', 0))  # Changed from 'CSAT Score' to 'Quality Score'
         
         # Normalize time metrics (lower is better)
         wrap_score = max(0, 100 - (wrap / 120 * 100)) if wrap > 0 else 100
         auto_on_score = min(100, (auto_on / (8*3600) * 100)) if auto_on > 0 else 0
         
-        # Calculate weighted score with specified weightages
+        # Calculate weighted score
         weighted_score = (
             (wrap_score * 0.05) +      # Wrap Up 5%
             (auto_on_score * 0.35) +   # Auto-On 35%
@@ -101,7 +111,7 @@ def calculate_weighted_score(row):
     except Exception as e:
         st.error(f"Error calculating score: {str(e)}")
         return 0
-
+        
 def get_weekly_top_performers(day_df, csat_df, week):
     """Identify top performers for a given week"""
     try:
