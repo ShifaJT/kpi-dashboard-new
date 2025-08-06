@@ -368,7 +368,7 @@ if time_frame == "Month":
                             ("✅ CSAT Res KPI Score", get_clean_value('Resolution CSAT KPI Score')),
                             ("😊 CSAT Beh KPI Score", get_clean_value('Agent Behaviour KPI Score')),
                             ("⭐ Quality KPI Score", get_clean_value('Quality KPI Score')),
-                            ("📞 PKT KPI Score", get_clean_value('PKT KPI Score')))
+                            ("📞 PKT KPI Score", get_clean_value('PKT KPI Score'))
                         ]
                         for i, (label, value) in enumerate(kpi_metrics):
                             kpi_cols[i % 4].metric(label, value)
