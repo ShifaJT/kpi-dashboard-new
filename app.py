@@ -121,7 +121,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
         
         # Ensure we're using the correct column name for Quality score
         csat_columns = ['EMP ID', 'CSAT Resolution', 'CSAT Behaviour']
-        quality_column = 'CSAT Score'  # This should match your sheet column name
+        quality_column = 'Quality Score'  # This should match your sheet column name
         
         if quality_column in week_csat_data.columns:
             csat_columns.append(quality_column)
@@ -150,7 +150,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
         top_performers['Auto On'] = top_performers['Auto On_sec'].apply(format_time)
         
         # Format scores as percentages
-        for col in ['CSAT Resolution', 'CSAT Behaviour', 'Quality Score']:
+        for col in ['CSAT Resolution', 'CSAT Behaviour', quality_column]:
             if col in top_performers.columns:
                 top_performers[col] = top_performers[col].apply(
                     lambda x: f"{float(x):.1f}%" if pd.notna(x) and str(x).replace('%', '').replace('.', '').isdigit() else 'N/A'
@@ -159,7 +159,7 @@ def get_weekly_top_performers(day_df, csat_df, week):
                 top_performers[col] = 'N/A'
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
-                              'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
+                              'CSAT Resolution', 'CSAT Behaviour', quality_column]]
     except Exception as e:
         st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
@@ -275,7 +275,7 @@ if not day_df.empty and not csat_df.empty:
                             <span class="metric-label">💻 Auto On:</span> {row['Auto On']}<br>
                             <span class="metric-label">✅ CSAT Res:</span> {row['CSAT Resolution']}<br>
                             <span class="metric-label">😊 CSAT Beh:</span> {row['CSAT Behaviour']}<br>
-                            <span class="metric-label">⭐ Quality:</span> {row['CSAT Score']}
+                            <span class="metric-label">⭐ Quality:</span> {row['Quality Score']}
                         </div>
                     </div>
                     """,
@@ -456,7 +456,7 @@ elif time_frame == "Week":
                             csat_metrics = [
                                 ("✅ CSAT Resolution", clean_percentage(week_csat['CSAT Resolution'].mean())),
                                 ("😊 CSAT Behaviour", clean_percentage(week_csat['CSAT Behaviour'].mean())),
-                                ("⭐ Quality Score", clean_percentage(week_csat['Quality Score'].mean()))
+                                ("⭐ Quality Score", clean_percentage(week_csat[quality_column].mean()))
                             ]
                         else:
                             csat_cols = st.columns(2)
