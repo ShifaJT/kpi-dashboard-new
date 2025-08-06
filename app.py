@@ -252,7 +252,7 @@ if not csat_df.empty:
             csat_df[col] = pd.to_numeric(csat_df[col].astype(str).str.replace('%', ''), errors='coerce')
 
 # === DISPLAY WEEKLY TOP PERFORMERS ===
-iif not day_df.empty and not csat_df.empty:
+if not day_df.empty and not csat_df.empty:
     current_week = datetime.now().isocalendar()[1]
     previous_week = current_week - 1 if current_week > 1 else 52
     
