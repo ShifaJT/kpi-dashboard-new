@@ -505,9 +505,18 @@ elif time_frame == "Week":
                     all_weeks.append(week_str)
             
             # Sort by year and week (most recent first)
-            all_weeks_sorted = sorted(all_weeks, 
-                                    key=lambda x: (int(x.split(', ')[1]), int(x.split(', ')[1])), 
-                                    reverse=True)
+            def week_sort_key(week_str):
+                try:
+                    # Handle format like "Week 12, 2024"
+                    week_part = week_str.split(',')[0]  # "Week 12"
+                    year_part = week_str.split(',')[1].strip()  # "2024"
+                    week_num = week_part.replace('Week', '').strip()  # "12"
+                    return (int(year_part), int(week_num))
+                except:
+                    # Return a value that will sort to the end if parsing fails
+                    return (0, 0)
+            
+            all_weeks_sorted = sorted(all_weeks, key=week_sort_key, reverse=True)
             
             selected_week_str = st.selectbox("📆 Select Week", all_weeks_sorted)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
