@@ -360,7 +360,12 @@ if time_frame == "Month":
         if len(month_names) == 0:
             st.error("❌ No months found in the data. Please check your 'KPI Month' sheet.")
         else:
-            selected_month = st.selectbox("📆 Select Month", month_names)
+            # Sort months with most recent first
+            month_names_sorted = sorted(month_names, 
+                                      key=lambda x: pd.to_datetime(x, format='%B'), 
+                                      reverse=True)
+            
+            selected_month = st.selectbox("📆 Select Month", month_names_sorted)
             emp_id = st.text_input("🆔 Enter Employee ID", key="month_emp_id")
 
             if emp_id and selected_month:
@@ -423,9 +428,9 @@ if time_frame == "Month":
                                 current_score = float(str(row['Grand Total']).replace('%', ''))
                                 st.markdown("### 📈 Overall KPI Score")
                                 try:
-                                    month_index = month_names.index(selected_month)
+                                    month_index = month_names_sorted.index(selected_month)
                                     if month_index > 0:
-                                        prev_month = month_names[month_index - 1]
+                                        prev_month = month_names_sorted[month_index - 1]
                                         prev_data = month_df[
                                             (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
                                             (month_df['Month'].str.strip() == prev_month.strip())
@@ -499,10 +504,12 @@ elif time_frame == "Week":
                 if week_str not in all_weeks:
                     all_weeks.append(week_str)
             
-            # Sort by year and week
-            all_weeks = sorted(all_weeks, key=lambda x: (int(x.split(' ')[1]), int(x.split(' ')[1])))
+            # Sort by year and week (most recent first)
+            all_weeks_sorted = sorted(all_weeks, 
+                                    key=lambda x: (int(x.split(', ')[1]), int(x.split(' ')[1])), 
+                                    reverse=True)
             
-            selected_week_str = st.selectbox("📆 Select Week", all_weeks, key="week_select")
+            selected_week_str = st.selectbox("📆 Select Week", all_weeks_sorted)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
             
             if emp_id and selected_week_str:
@@ -544,7 +551,7 @@ elif time_frame == "Week":
                         
                         # Filter CSAT data
                         csat_filter = (valid_csat_data["Week"].astype(str).str.strip() == week_num) & \
-                                     (valid_csat_data["Year"].astize(str).str.strip() == year_num)
+                                     (valid_csat_data["Year"].astype(str).str.strip() == year_num)
                         
                         week_csat = valid_csat_data[
                             (valid_csat_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
@@ -579,7 +586,7 @@ else:
     if not day_df.empty:
         # Filter out rows with invalid dates
         valid_day_data = day_df[day_df['Date'].notna()]
-        available_dates = sorted(valid_day_data['Date'].dropna().unique())
+        available_dates = sorted(valid_day_data['Date'].dropna().unique(), reverse=True)
         
         if not available_dates:
             st.warning("⚠️ No valid daily data available")
