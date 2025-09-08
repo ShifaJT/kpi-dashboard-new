@@ -271,9 +271,20 @@ def safe_convert_time(time_val):
         return 0.0
 
 if not day_df.empty:
-    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
-    day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
-    day_df['Year'] = day_df['Date'].apply(lambda x: str(x.year))
+    # Convert Date column to datetime, handling errors
+    day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
+    
+    # Extract week and year, handling NaT values
+    day_df['Week'] = day_df['Date'].apply(
+        lambda x: str(x.isocalendar()[1]) if pd.notna(x) else 'Unknown'
+    )
+    day_df['Year'] = day_df['Date'].apply(
+        lambda x: str(x.year) if pd.notna(x) else 'Unknown'
+    )
+    
+    # Convert back to date for display
+    day_df['Date'] = day_df['Date'].dt.date
+    
     for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
         if col in day_df.columns:
             day_df[f"{col}_sec"] = day_df[col].apply(safe_convert_time)
@@ -416,7 +427,7 @@ if time_frame == "Month":
                                     if month_index > 0:
                                         prev_month = month_names[month_index - 1]
                                         prev_data = month_df[
-                                            (month_df["EMP ID"].astize(str).str.strip() == emp_id.strip()) &
+                                            (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
                                             (month_df['Month'].str.strip() == prev_month.strip())
                                         ]
                                         if not prev_data.empty:
@@ -468,10 +479,16 @@ elif time_frame == "Week":
     st.subheader("📅 Weekly Performance")
     
     if not day_df.empty and not csat_df.empty:
-        # Get unique weeks with year information
-        if 'Year' in day_df.columns and 'Year' in csat_df.columns:
-            day_weeks = day_df[['Week', 'Year']].drop_duplicates().dropna()
-            csat_weeks = csat_df[['Week', 'Year']].drop_duplicates().dropna()
+        # Filter out rows with unknown week/year
+        valid_day_data = day_df[(day_df['Week'] != 'Unknown') & (day_df['Year'] != 'Unknown')]
+        valid_csat_data = csat_df[(csat_df['Week'] != 'Unknown') & (csat_df['Year'] != 'Unknown')]
+        
+        if valid_day_data.empty or valid_csat_data.empty:
+            st.warning("⚠️ No valid weekly data available")
+        else:
+            # Get unique weeks with year information
+            day_weeks = valid_day_data[['Week', 'Year']].drop_duplicates().dropna()
+            csat_weeks = valid_csat_data[['Week', 'Year']].drop_duplicates().dropna()
             
             # Create combined list with year information
             all_weeks = []
@@ -482,89 +499,76 @@ elif time_frame == "Week":
                 if week_str not in all_weeks:
                     all_weeks.append(week_str)
             
+            # Sort by year and week
             all_weeks = sorted(all_weeks, key=lambda x: (int(x.split(', ')[1]), int(x.split(' ')[1])))
-        else:
-            # Fallback to week-only approach
-            day_weeks = day_df['Week'].dropna().unique()
-            csat_weeks = csat_df['Week'].dropna().unique()
-            all_weeks = sorted(set(day_weeks) | set(csat_weeks))
-            all_weeks = [f"Week {week}" for week in all_weeks]
-        
-        selected_week_str = st.selectbox("📆 Select Week", all_weeks, key="week_select")
-        emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
-        
-        if emp_id and selected_week_str:
-            try:
-                # Parse week and year from selection
-                if ',' in selected_week_str:
-                    # Format: "Week X, YYYY"
+            
+            selected_week_str = st.selectbox("📆 Select Week", all_weeks, key="week_select")
+            emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
+            
+            if emp_id and selected_week_str:
+                try:
+                    # Parse week and year from selection
                     week_part = selected_week_str.split(',')[0]
                     week_num = week_part.replace('Week', '').strip()
                     year_num = selected_week_str.split(',')[1].strip()
-                else:
-                    # Format: "Week X" (fallback)
-                    week_num = selected_week_str.replace('Week', '').strip()
-                    year_num = str(datetime.now().year)  # Default to current year
-                
-                week_filter = (day_df["Week"].astype(str).str.strip() == week_num)
-                if 'Year' in day_df.columns:
-                    week_filter = week_filter & (day_df["Year"].astype(str).str.strip() == year_num)
-                
-                week_calls = day_df[
-                    (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
-                    week_filter
-                ].copy()
-                
-                week_calls['Call Count'] = pd.to_numeric(week_calls['Call Count'].astype(str).str.replace(',', ''), errors='coerce')
-                
-                if not week_calls.empty:
-                    total_calls = int(week_calls["Call Count"].sum())
                     
-                    def format_avg_time(col):
-                        avg_sec = week_calls[f"{col}_sec"].mean()
-                        return str(timedelta(seconds=int(avg_sec))).split('.')[0]
+                    week_filter = (valid_day_data["Week"].astype(str).str.strip() == week_num) & \
+                                 (valid_day_data["Year"].astype(str).str.strip() == year_num)
                     
-                    st.subheader(f"📊 {selected_week_str} Performance")
-                    st.markdown("### 📞 Call Metrics")
-                    cols = st.columns(5)
-                    call_metrics = [
-                        ("📊 Total Calls", f"{total_calls:,}"),
-                        ("⏱️ Avg AHT", format_avg_time('AHT')),
-                        ("⏸️ Avg Hold", format_avg_time('Hold')),
-                        ("⏱️ Avg Wrap", format_avg_time('Wrap')),
-                        ("💻 Avg Auto On", format_avg_time('Auto On'))
-                    ]
-                    for i, (label, value) in enumerate(call_metrics):
-                        cols[i].metric(label, value)
+                    week_calls = valid_day_data[
+                        (valid_day_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                        week_filter
+                    ].copy()
                     
-                    # Filter CSAT data
-                    csat_filter = (csat_df["Week"].astype(str).str.strip() == week_num)
-                    if 'Year' in csat_df.columns:
-                        csat_filter = csat_filter & (csat_df["Year"].astype(str).str.strip() == year_num)
+                    week_calls['Call Count'] = pd.to_numeric(week_calls['Call Count'].astype(str).str.replace(',', ''), errors='coerce')
                     
-                    week_csat = csat_df[
-                        (csat_df["EMP ID"].astize(str).str.strip() == str(emp_id).strip()) & 
-                        csat_filter
-                    ]
-                    
-                    if not week_csat.empty:
-                        st.markdown("### 😊 CSAT Metrics")
-                        csat_cols = st.columns(3)
-                        csat_metrics = [
-                            ("✅ CSAT Resolution", format_percentage(week_csat['CSAT Resolution'].mean())),
-                            ("😊 CSAT Behaviour", format_percentage(week_csat['CSAT Behaviour'].mean())),
-                            ("⭐ Quality Score", format_percentage(week_csat['Quality Score'].mean()))
+                    if not week_calls.empty:
+                        total_calls = int(week_calls["Call Count"].sum())
+                        
+                        def format_avg_time(col):
+                            avg_sec = week_calls[f"{col}_sec"].mean()
+                            return str(timedelta(seconds=int(avg_sec))).split('.')[0]
+                        
+                        st.subheader(f"📊 {selected_week_str} Performance")
+                        st.markdown("### 📞 Call Metrics")
+                        cols = st.columns(5)
+                        call_metrics = [
+                            ("📊 Total Calls", f"{total_calls:,}"),
+                            ("⏱️ Avg AHT", format_avg_time('AHT')),
+                            ("⏸️ Avg Hold", format_avg_time('Hold')),
+                            ("⏱️ Avg Wrap", format_avg_time('Wrap')),
+                            ("💻 Avg Auto On", format_avg_time('Auto On'))
                         ]
-                        for i, (label, value) in enumerate(csat_metrics):
-                            csat_cols[i].metric(label, value)
-                    
-                    with st.expander("🔍 View Daily Breakdown"):
-                        daily_data = week_calls[['Date', 'Call Count', 'AHT', 'Hold', 'Wrap', 'Auto On']].copy()
-                        st.dataframe(daily_data)
-                else:
-                    st.warning("⚠️ No call data found for this employee/week")
-            except Exception as e:
-                st.error(f"❌ Error processing weekly data: {str(e)}")
+                        for i, (label, value) in enumerate(call_metrics):
+                            cols[i].metric(label, value)
+                        
+                        # Filter CSAT data
+                        csat_filter = (valid_csat_data["Week"].astype(str).str.strip() == week_num) & \
+                                     (valid_csat_data["Year"].astize(str).str.strip() == year_num)
+                        
+                        week_csat = valid_csat_data[
+                            (valid_csat_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                            csat_filter
+                        ]
+                        
+                        if not week_csat.empty:
+                            st.markdown("### 😊 CSAT Metrics")
+                            csat_cols = st.columns(3)
+                            csat_metrics = [
+                                ("✅ CSAT Resolution", format_percentage(week_csat['CSAT Resolution'].mean())),
+                                ("😊 CSAT Behaviour", format_percentage(week_csat['CSAT Behaviour'].mean())),
+                                ("⭐ Quality Score", format_percentage(week_csat['Quality Score'].mean()))
+                            ]
+                            for i, (label, value) in enumerate(csat_metrics):
+                                csat_cols[i].metric(label, value)
+                        
+                        with st.expander("🔍 View Daily Breakdown"):
+                            daily_data = week_calls[['Date', 'Call Count', 'AHT', 'Hold', 'Wrap', 'Auto On']].copy()
+                            st.dataframe(daily_data)
+                    else:
+                        st.warning("⚠️ No call data found for this employee/week")
+                except Exception as e:
+                    st.error(f"❌ Error processing weekly data: {str(e)}")
     else:
         st.warning("⚠️ Weekly data not loaded properly")
         
@@ -573,56 +577,62 @@ else:
     st.subheader("📅 Daily Performance")
     
     if not day_df.empty:
-        available_dates = sorted(day_df['Date'].dropna().unique())
-        selected_date = st.selectbox("📆 Select Date", available_dates, key="day_date_select")
-        emp_id = st.text_input("🆔 Enter Employee ID", key="day_emp_id")
+        # Filter out rows with invalid dates
+        valid_day_data = day_df[day_df['Date'].notna()]
+        available_dates = sorted(valid_day_data['Date'].dropna().unique())
         
-        if emp_id and selected_date:
-            daily_data = day_df[
-                (day_df["EMP ID"].astize(str).str.strip() == str(emp_id).strip()) & 
-                (day_df["Date"] == selected_date)
-            ]
+        if not available_dates:
+            st.warning("⚠️ No valid daily data available")
+        else:
+            selected_date = st.selectbox("📆 Select Date", available_dates, key="day_date_select")
+            emp_id = st.text_input("🆔 Enter Employee ID", key="day_emp_id")
             
-            if not daily_data.empty:
-                row = daily_data.iloc[0]
-                st.subheader(f"📊 Performance for {row['NAME']} on {selected_date}")
-                
-                def format_time(time_val):
-                    if pd.isna(time_val) or time_val == 0:
-                        return "00:00:00"
-                    return str(timedelta(seconds=int(time_val))).split('.')[0]
-                
-                # First row of metrics
-                cols1 = st.columns(4)
-                metrics1 = [
-                    ("📞 Calls", f"{int(row.get('Call Count', 0)):,}"),
-                    ("⏱️ AHT", format_time(safe_convert_time(row.get('AHT')))),
-                    ("⏸️ Hold", format_time(safe_convert_time(row.get('Hold')))),
-                    ("⏱️ Wrap", format_time(safe_convert_time(row.get('Wrap'))))
+            if emp_id and selected_date:
+                daily_data = valid_day_data[
+                    (valid_day_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                    (valid_day_data["Date"] == selected_date)
                 ]
-                for i, (label, value) in enumerate(metrics1):
-                    cols1[i].metric(label, value)
                 
-                # Second row of metrics
-                cols2 = st.columns(4)
-                metrics2 = [
-                    ("💻 Auto On", format_time(safe_convert_time(row.get('Auto On')))),
-                    ("✅ CSAT Resolution", format_percentage(row.get('CSAT Resolution'))),
-                    ("😊 CSAT Behaviour", format_percentage(row.get('CSAT Behaviour'))),
-                    ("", "")  # Empty metric for layout
-                ]
-                for i, (label, value) in enumerate(metrics2):
-                    if label:  # Only show if label is not empty
-                        cols2[i].metric(label, value)
-                
-                call_count = int(row.get('Call Count', 0))
-                if call_count > 50:
-                    st.success("🎉 Excellent call volume today!")
-                elif call_count > 30:
-                    st.info("👍 Good performance today")
+                if not daily_data.empty:
+                    row = daily_data.iloc[0]
+                    st.subheader(f"📊 Performance for {row['NAME']} on {selected_date}")
+                    
+                    def format_time(time_val):
+                        if pd.isna(time_val) or time_val == 0:
+                            return "00:00:00"
+                        return str(timedelta(seconds=int(time_val))).split('.')[0]
+                    
+                    # First row of metrics
+                    cols1 = st.columns(4)
+                    metrics1 = [
+                        ("📞 Calls", f"{int(row.get('Call Count', 0)):,}"),
+                        ("⏱️ AHT", format_time(safe_convert_time(row.get('AHT')))),
+                        ("⏸️ Hold", format_time(safe_convert_time(row.get('Hold')))),
+                        ("⏱️ Wrap", format_time(safe_convert_time(row.get('Wrap'))))
+                    ]
+                    for i, (label, value) in enumerate(metrics1):
+                        cols1[i].metric(label, value)
+                    
+                    # Second row of metrics
+                    cols2 = st.columns(4)
+                    metrics2 = [
+                        ("💻 Auto On", format_time(safe_convert_time(row.get('Auto On')))),
+                        ("✅ CSAT Resolution", format_percentage(row.get('CSAT Resolution'))),
+                        ("😊 CSAT Behaviour", format_percentage(row.get('CSAT Behaviour'))),
+                        ("", "")  # Empty metric for layout
+                    ]
+                    for i, (label, value) in enumerate(metrics2):
+                        if label:  # Only show if label is not empty
+                            cols2[i].metric(label, value)
+                    
+                    call_count = int(row.get('Call Count', 0))
+                    if call_count > 50:
+                        st.success("🎉 Excellent call volume today!")
+                    elif call_count > 30:
+                        st.info("👍 Good performance today")
+                    else:
+                        st.warning("💪 Let's aim for more calls tomorrow")
                 else:
-                    st.warning("💪 Let's aim for more calls tomorrow")
-            else:
-                st.warning("⚠️ No data found for this employee/date")
+                    st.warning("⚠️ No data found for this employee/date")
     else:
         st.warning("⚠️ Daily data not loaded properly")
