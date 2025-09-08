@@ -506,7 +506,7 @@ elif time_frame == "Week":
             
             # Sort by year and week (most recent first)
             all_weeks_sorted = sorted(all_weeks, 
-                                    key=lambda x: (int(x.split(', ')[1]), int(x.split(' ')[1])), 
+                                    key=lambda x: (int(x.split(', ')[1]), int(x.split(', ')[1])), 
                                     reverse=True)
             
             selected_week_str = st.selectbox("📆 Select Week", all_weeks_sorted)
