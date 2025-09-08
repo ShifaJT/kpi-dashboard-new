@@ -500,7 +500,7 @@ elif time_frame == "Week":
                     all_weeks.append(week_str)
             
             # Sort by year and week
-            all_weeks = sorted(all_weeks, key=lambda x: (int(x.split(', ')[1]), int(x.split(' ')[1])))
+            all_weeks = sorted(all_weeks, key=lambda x: (int(x.split(' ')[1]), int(x.split(' ')[1])))
             
             selected_week_str = st.selectbox("📆 Select Week", all_weeks, key="week_select")
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
