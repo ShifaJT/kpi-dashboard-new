@@ -346,6 +346,7 @@ st.title("📊 KPI Performance Dashboard")
 time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
+# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
 
@@ -427,36 +428,42 @@ if time_frame == "Month":
                             try:
                                 current_score = float(str(row['Grand Total']).replace('%', ''))
                                 st.markdown("### 📈 Overall KPI Score")
-                                try:
-                                    month_index = month_names_sorted.index(selected_month)
-                                    if month_index > 0:
-                                        prev_month = month_names_sorted[month_index - 1]
-                                        prev_data = month_df[
-                                            (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
-                                            (month_df['Month'].str.strip() == prev_month.strip())
-                                        ]
-                                        if not prev_data.empty:
-                                            prev_score = float(str(prev_data.iloc[0]['Grand Total']).replace('%', ''))
-                                            delta = current_score - prev_score
-                                            delta_label = f"{'↑' if delta >= 0 else '↓'} {abs(delta):.1f}"
-                                        else:
-                                            delta = None
-                                    else:
-                                        delta = None
-                                except:
-                                    delta = None
-
+                                
+                                # Get the index of selected month in sorted list
+                                month_index = month_names_sorted.index(selected_month)
+                                
+                                # Find the previous month with data for this employee
+                                delta = None
+                                delta_label = ""
+                                
+                                # Check previous months for data
+                                for i in range(month_index + 1, len(month_names_sorted)):
+                                    prev_month = month_names_sorted[i]
+                                    prev_data = month_df[
+                                        (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
+                                        (month_df['Month'].str.strip() == prev_month.strip())
+                                    ]
+                                    
+                                    if not prev_data.empty and 'Grand Total' in prev_data.columns:
+                                        prev_score = float(str(prev_data.iloc[0]['Grand Total']).replace('%', ''))
+                                        delta = current_score - prev_score
+                                        delta_label = f"{'↑' if delta >= 0 else '↓'} {abs(delta):.1f}"
+                                        break
+                                
                                 if delta is not None:
                                     st.metric("Overall Score", f"{current_score:.1f}/5.0", delta_label, delta_color="normal")
                                     if delta > 0:
-                                        st.markdown(f"📈 **{abs(delta):.1f} improved from last month.**")
-                                        st.success("🎉 Keep up the great work and continue the momentum! ")
+                                        st.markdown(f"📈 **{abs(delta):.1f} points improved from previous month!**")
+                                        st.success("🎉 Keep up the great work and continue the momentum!")
                                     elif delta < 0:
-                                        st.markdown(f"📉 **{abs(delta):.1f} dropped from last month.**")
-                                        st.warning("💪 Let's focus on areas of improvement and bounce back stronger! ")
+                                        st.markdown(f"📉 **{abs(delta):.1f} points dropped from previous month.**")
+                                        st.warning("💪 Let's focus on areas of improvement and bounce back stronger!")
+                                    else:
+                                        st.markdown("➡️ **No change from previous month.**")
+                                        st.info("🔄 Consistent performance! Let's aim for improvement next month.")
                                 else:
                                     st.metric("Overall Score", f"{current_score:.1f}/5.0")
-                                    st.info("ℹ️ No data from the previous month to compare.")
+                                    st.info("ℹ️ No previous month data available for comparison.")
 
                                 st.progress(current_score / 5)
                             except ValueError:
