@@ -346,7 +346,6 @@ st.title("📊 KPI Performance Dashboard")
 time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
 # === MONTH VIEW ===
-# === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
 
