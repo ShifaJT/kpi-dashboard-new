@@ -58,6 +58,15 @@ st.markdown("""
             --sidebar-background: #262730;
         }
     }
+    
+    /* Additional styling for metrics */
+    .metric-container {
+        background-color: var(--background-color);
+        border-radius: 10px;
+        padding: 15px;
+        margin-bottom: 15px;
+        border: 1px solid var(--border-color);
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -113,12 +122,20 @@ def calculate_weighted_score(row):
         st.error(f"Error calculating score: {str(e)}")
         return 0
 
-def get_weekly_top_performers(day_df, csat_df, week):
+def get_weekly_top_performers(day_df, csat_df, week, year=None):
     """Identify top performers for a given week"""
     try:
-        # Filter data for the selected week
-        week_day_data = day_df[day_df['Week'] == str(week)].copy()
-        week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
+        # If year is provided, filter by both week and year
+        if year:
+            week_filter = (day_df['Week'] == str(week)) & (day_df['Year'] == str(year))
+            week_day_data = day_df[week_filter].copy()
+            
+            csat_week_filter = (csat_df['Week'] == str(week)) & (csat_df['Year'] == str(year))
+            week_csat_data = csat_df[csat_week_filter].copy()
+        else:
+            # Fallback to week-only filtering
+            week_day_data = day_df[day_df['Week'] == str(week)].copy()
+            week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
         
         if week_day_data.empty or week_csat_data.empty:
             return pd.DataFrame()
@@ -186,6 +203,7 @@ def get_gspread_client():
         return gspread.authorize(creds)
     except Exception as e:
         st.error(f"🔐 Authentication failed: {str(e)}")
+        st.info("Please make sure you have configured the Google Service Account credentials correctly.")
         return None
 
 client = get_gspread_client()
@@ -255,23 +273,40 @@ def safe_convert_time(time_val):
 if not day_df.empty:
     day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce').dt.date
     day_df['Week'] = day_df['Date'].apply(lambda x: x.isocalendar()[1]).astype(str)
+    day_df['Year'] = day_df['Date'].apply(lambda x: str(x.year))
     for col in ['AHT', 'Wrap', 'Hold', 'Auto On']:
         if col in day_df.columns:
             day_df[f"{col}_sec"] = day_df[col].apply(safe_convert_time)
 
 if not csat_df.empty:
     csat_df['Week'] = csat_df['Week'].astype(str)
+    # Try to extract year from CSAT data if available
+    if 'Date' in csat_df.columns:
+        csat_df['Date'] = pd.to_datetime(csat_df['Date'], errors='coerce')
+        csat_df['Year'] = csat_df['Date'].dt.year.astype(str)
+    else:
+        # Default to current year if no date column
+        csat_df['Year'] = str(datetime.now().year)
 
 # === DISPLAY WEEKLY TOP PERFORMERS ===
 if not day_df.empty and not csat_df.empty:
-    current_week = datetime.now().isocalendar()[1]
-    previous_week = current_week - 1 if current_week > 1 else 52
+    current_date = datetime.now()
+    current_week = current_date.isocalendar()[1]
+    current_year = current_date.year
+    
+    # Handle year transition for previous week
+    if current_week == 1:
+        previous_week = 52
+        previous_year = current_year - 1
+    else:
+        previous_week = current_week - 1
+        previous_year = current_year
     
     with st.sidebar:
         st.header("🏆 Previous Week Top Performers")
-        st.markdown(f"**📅 Week {previous_week}**")
+        st.markdown(f"**📅 Week {previous_week}, {previous_year}**")
         
-        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week)
+        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
         
         if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
@@ -299,7 +334,6 @@ if not day_df.empty and not csat_df.empty:
 st.title("📊 KPI Performance Dashboard")
 time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
 
-# === MONTH VIEW ===
 # === MONTH VIEW ===
 if time_frame == "Month":
     st.subheader("📅 Monthly Performance")
@@ -382,7 +416,7 @@ if time_frame == "Month":
                                     if month_index > 0:
                                         prev_month = month_names[month_index - 1]
                                         prev_data = month_df[
-                                            (month_df["EMP ID"].astype(str).str.strip() == emp_id.strip()) &
+                                            (month_df["EMP ID"].astize(str).str.strip() == emp_id.strip()) &
                                             (month_df['Month'].str.strip() == prev_month.strip())
                                         ]
                                         if not prev_data.empty:
@@ -434,19 +468,53 @@ elif time_frame == "Week":
     st.subheader("📅 Weekly Performance")
     
     if not day_df.empty and not csat_df.empty:
-        day_weeks = day_df['Week'].dropna().unique()
-        csat_weeks = csat_df['Week'].dropna().unique()
-        all_weeks = sorted(set(day_weeks) | set(csat_weeks))
+        # Get unique weeks with year information
+        if 'Year' in day_df.columns and 'Year' in csat_df.columns:
+            day_weeks = day_df[['Week', 'Year']].drop_duplicates().dropna()
+            csat_weeks = csat_df[['Week', 'Year']].drop_duplicates().dropna()
+            
+            # Create combined list with year information
+            all_weeks = []
+            for _, row in day_weeks.iterrows():
+                all_weeks.append(f"Week {row['Week']}, {row['Year']}")
+            for _, row in csat_weeks.iterrows():
+                week_str = f"Week {row['Week']}, {row['Year']}"
+                if week_str not in all_weeks:
+                    all_weeks.append(week_str)
+            
+            all_weeks = sorted(all_weeks, key=lambda x: (int(x.split(', ')[1]), int(x.split(' ')[1])))
+        else:
+            # Fallback to week-only approach
+            day_weeks = day_df['Week'].dropna().unique()
+            csat_weeks = csat_df['Week'].dropna().unique()
+            all_weeks = sorted(set(day_weeks) | set(csat_weeks))
+            all_weeks = [f"Week {week}" for week in all_weeks]
         
-        selected_week = st.selectbox("📆 Select Week", all_weeks, key="week_select")
+        selected_week_str = st.selectbox("📆 Select Week", all_weeks, key="week_select")
         emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
         
-        if emp_id and selected_week:
+        if emp_id and selected_week_str:
             try:
+                # Parse week and year from selection
+                if ',' in selected_week_str:
+                    # Format: "Week X, YYYY"
+                    week_part = selected_week_str.split(',')[0]
+                    week_num = week_part.replace('Week', '').strip()
+                    year_num = selected_week_str.split(',')[1].strip()
+                else:
+                    # Format: "Week X" (fallback)
+                    week_num = selected_week_str.replace('Week', '').strip()
+                    year_num = str(datetime.now().year)  # Default to current year
+                
+                week_filter = (day_df["Week"].astype(str).str.strip() == week_num)
+                if 'Year' in day_df.columns:
+                    week_filter = week_filter & (day_df["Year"].astype(str).str.strip() == year_num)
+                
                 week_calls = day_df[
                     (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
-                    (day_df["Week"].astype(str).str.strip() == str(selected_week).strip())
+                    week_filter
                 ].copy()
+                
                 week_calls['Call Count'] = pd.to_numeric(week_calls['Call Count'].astype(str).str.replace(',', ''), errors='coerce')
                 
                 if not week_calls.empty:
@@ -456,7 +524,7 @@ elif time_frame == "Week":
                         avg_sec = week_calls[f"{col}_sec"].mean()
                         return str(timedelta(seconds=int(avg_sec))).split('.')[0]
                     
-                    st.subheader(f"📊 Week {selected_week} Performance")
+                    st.subheader(f"📊 {selected_week_str} Performance")
                     st.markdown("### 📞 Call Metrics")
                     cols = st.columns(5)
                     call_metrics = [
@@ -469,10 +537,16 @@ elif time_frame == "Week":
                     for i, (label, value) in enumerate(call_metrics):
                         cols[i].metric(label, value)
                     
+                    # Filter CSAT data
+                    csat_filter = (csat_df["Week"].astype(str).str.strip() == week_num)
+                    if 'Year' in csat_df.columns:
+                        csat_filter = csat_filter & (csat_df["Year"].astype(str).str.strip() == year_num)
+                    
                     week_csat = csat_df[
-                        (csat_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
-                        (csat_df["Week"].astype(str).str.strip() == str(selected_week).strip())
+                        (csat_df["EMP ID"].astize(str).str.strip() == str(emp_id).strip()) & 
+                        csat_filter
                     ]
+                    
                     if not week_csat.empty:
                         st.markdown("### 😊 CSAT Metrics")
                         csat_cols = st.columns(3)
@@ -505,7 +579,7 @@ else:
         
         if emp_id and selected_date:
             daily_data = day_df[
-                (day_df["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
+                (day_df["EMP ID"].astize(str).str.strip() == str(emp_id).strip()) & 
                 (day_df["Date"] == selected_date)
             ]
             
