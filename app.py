@@ -491,45 +491,19 @@ elif time_frame == "Week":
         if valid_day_data.empty or valid_csat_data.empty:
             st.warning("⚠️ No valid weekly data available")
         else:
-            # Get unique weeks with year information
-            day_weeks = valid_day_data[['Week', 'Year']].drop_duplicates().dropna()
-            csat_weeks = valid_csat_data[['Week', 'Year']].drop_duplicates().dropna()
+            # Get unique weeks
+            day_weeks = valid_day_data['Week'].drop_duplicates().dropna()
+            csat_weeks = valid_csat_data['Week'].drop_duplicates().dropna()
             
-            # Create combined list with year information
-            all_weeks = []
-            for _, row in day_weeks.iterrows():
-                all_weeks.append(f"Week {row['Week']}, {row['Year']}")
-            for _, row in csat_weeks.iterrows():
-                week_str = f"Week {row['Week']}, {row['Year']}"
-                if week_str not in all_weeks:
-                    all_weeks.append(week_str)
+            # Create combined list of weeks
+            all_weeks = sorted(set(day_weeks) | set(csat_weeks), key=int, reverse=True)
             
-            # Sort by year and week (most recent first)
-            def week_sort_key(week_str):
-                try:
-                    # Handle format like "Week 12, 2024"
-                    week_part = week_str.split(',')[0]  # "Week 12"
-                    year_part = week_str.split(',')[1].strip()  # "2024"
-                    week_num = week_part.replace('Week', '').strip()  # "12"
-                    return (int(year_part), int(week_num))
-                except:
-                    # Return a value that will sort to the end if parsing fails
-                    return (0, 0)
-            
-            all_weeks_sorted = sorted(all_weeks, key=week_sort_key, reverse=True)
-            
-            selected_week_str = st.selectbox("📆 Select Week", all_weeks_sorted)
+            selected_week = st.selectbox("📆 Select Week", all_weeks)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
             
-            if emp_id and selected_week_str:
+            if emp_id and selected_week:
                 try:
-                    # Parse week and year from selection
-                    week_part = selected_week_str.split(',')[0]
-                    week_num = week_part.replace('Week', '').strip()
-                    year_num = selected_week_str.split(',')[1].strip()
-                    
-                    week_filter = (valid_day_data["Week"].astype(str).str.strip() == week_num) & \
-                                 (valid_day_data["Year"].astype(str).str.strip() == year_num)
+                    week_filter = (valid_day_data["Week"].astype(str).str.strip() == str(selected_week))
                     
                     week_calls = valid_day_data[
                         (valid_day_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
@@ -545,7 +519,7 @@ elif time_frame == "Week":
                             avg_sec = week_calls[f"{col}_sec"].mean()
                             return str(timedelta(seconds=int(avg_sec))).split('.')[0]
                         
-                        st.subheader(f"📊 {selected_week_str} Performance")
+                        st.subheader(f"📊 Week {selected_week} Performance")
                         st.markdown("### 📞 Call Metrics")
                         cols = st.columns(5)
                         call_metrics = [
@@ -559,8 +533,7 @@ elif time_frame == "Week":
                             cols[i].metric(label, value)
                         
                         # Filter CSAT data
-                        csat_filter = (valid_csat_data["Week"].astype(str).str.strip() == week_num) & \
-                                     (valid_csat_data["Year"].astype(str).str.strip() == year_num)
+                        csat_filter = (valid_csat_data["Week"].astype(str).str.strip() == str(selected_week))
                         
                         week_csat = valid_csat_data[
                             (valid_csat_data["EMP ID"].astype(str).str.strip() == str(emp_id).strip()) & 
