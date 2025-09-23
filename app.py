@@ -111,9 +111,9 @@ def calculate_weighted_score(row):
         # Calculate weighted score with specified weightages
         weighted_score = (
             (wrap_score * 0.05) +      # Wrap Up 5%
-            (auto_on_score * 0.35) +   # Auto-On 35%
+            (auto_on_score * 0.40) +   # Auto-On 40%
             (csat_res * 0.10) +        # Resolution CSAT 10%
-            (csat_beh * 0.20) +        # CSAT Behaviour 20%
+            (csat_beh * 0.15) +        # CSAT Behaviour 15%
             (quality * 0.30)           # Quality 30%
         )
         
