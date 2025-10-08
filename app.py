@@ -503,7 +503,6 @@ elif time_frame == "Week":
             
             # Create combined list of weeks
             all_weeks = sorted(set(day_weeks) | set(csat_weeks), key=int, reverse=True)
-            
             selected_week = st.selectbox("📆 Select Week", all_weeks)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
             
