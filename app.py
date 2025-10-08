@@ -490,21 +490,42 @@ elif time_frame == "Week":
     st.subheader("📅 Weekly Performance")
     
     if not day_df.empty and not csat_df.empty:
-        # Filter out rows with unknown week/year
-        valid_day_data = day_df[(day_df['Week'] != 'Unknown') & (day_df['Year'] != 'Unknown')]
-        valid_csat_data = csat_df[(csat_df['Week'] != 'Unknown') & (csat_df['Year'] != 'Unknown')]
+        # Filter out rows with unknown week/year and non-numeric weeks
+        valid_day_data = day_df[
+            (day_df['Week'] != 'Unknown') & 
+            (day_df['Year'] != 'Unknown') &
+            (day_df['Week'].apply(lambda x: str(x).isdigit()))
+        ]
+        valid_csat_data = csat_df[
+            (csat_df['Week'] != 'Unknown') & 
+            (csat_df['Year'] != 'Unknown') &
+            (csat_df['Week'].apply(lambda x: str(x).isdigit()))
+        ]
         
         if valid_day_data.empty or valid_csat_data.empty:
             st.warning("⚠️ No valid weekly data available")
         else:
-            # Get unique weeks
+            # Get unique weeks and convert to integers for proper sorting
             day_weeks = valid_day_data['Week'].drop_duplicates().dropna()
             csat_weeks = valid_csat_data['Week'].drop_duplicates().dropna()
             
-            # Create combined list of weeks
-            all_weeks = sorted(set(day_weeks) | set(csat_weeks), key=int, reverse=True)
+            # Convert to integers, sort, then convert back to strings for display
+            try:
+                all_weeks_int = sorted(
+                    set(int(week) for week in day_weeks) | set(int(week) for week in csat_weeks),
+                    reverse=True
+                )
+                all_weeks = [str(week) for week in all_weeks_int]
+                
+            except Exception as e:
+                st.error(f"Error processing weeks: {str(e)}")
+                # Fallback: use string sorting
+                all_weeks = sorted(set(day_weeks) | set(csat_weeks), reverse=True)
+            
             selected_week = st.selectbox("📆 Select Week", all_weeks)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
+            
+            # ... rest of your week view code remains the same ...
             
             if emp_id and selected_week:
                 try:
