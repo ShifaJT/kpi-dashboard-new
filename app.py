@@ -91,17 +91,13 @@ def format_percentage(val):
         return 'N/A'
     return f"{float(val):.1f}%"
 
-# === FUNCTION FOR TOP PERFORMERS WITH AUTO ON THRESHOLD ===
+# === NEW FUNCTION FOR TOP PERFORMERS ===
 def calculate_weighted_score(row):
-    """Calculate weighted score with specified weightages, excluding Auto On < 07:50"""
+    """Calculate weighted score with specified weightages"""
     try:
         # Convert time metrics to seconds
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
-        
-        # EXCLUDE employees with Auto On less than 07:50 (7 hours 50 minutes = 28200 seconds)
-        if auto_on < 28200:
-            return 0
         
         # Convert percentages
         csat_res = clean_percentage_value(row.get('CSAT Resolution', 0))
@@ -123,6 +119,7 @@ def calculate_weighted_score(row):
         
         return round(weighted_score, 2)
     except Exception as e:
+        st.error(f"Error calculating score: {str(e)}")
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week, year=None):
@@ -164,16 +161,13 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
-        # Filter out employees with zero score (Auto On < 07:50)
-        eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
-        
         # Get top 5 and format
-        top_performers = eligible_performers.sort_values('_weighted_score', ascending=False).head(5)
+        top_performers = weekly_metrics.sort_values('_weighted_score', ascending=False).head(5)
         
         # Convert times to readable format
         def format_time(seconds):
             if pd.isna(seconds) or seconds == 0:
-                return "00:00:00"
+                return "00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
@@ -191,6 +185,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
                               'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
     except Exception as e:
+        st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
 
 # === CONFIGURATION ===
@@ -304,33 +299,25 @@ if not csat_df.empty:
         # Default to current year if no date column
         csat_df['Year'] = str(datetime.now().year)
 
-# === DISPLAY WEEKLY TOP PERFORMERS IN SIDEBAR ===
+# === DISPLAY WEEKLY TOP PERFORMERS ===
 if not day_df.empty and not csat_df.empty:
     current_date = datetime.now()
     current_week = current_date.isocalendar()[1]
     current_year = current_date.year
     
+    # Handle year transition for previous week
+    if current_week == 1:
+        previous_week = 52
+        previous_year = current_year - 1
+    else:
+        previous_week = current_week - 1
+        previous_year = current_year
+    
     with st.sidebar:
-        st.header("🏆 Weekly Top Performers")
+        st.header("🏆 Previous Week Top Performers")
+        st.markdown(f"**📅 Week {previous_week}, {previous_year}**")
         
-        # Try current week first
-        top_performers = get_weekly_top_performers(day_df, csat_df, current_week, current_year)
-        
-        if top_performers.empty:
-            # If current week has no data, try previous week
-            if current_week == 1:
-                previous_week = 52
-                previous_year = current_year - 1
-            else:
-                previous_week = current_week - 1
-                previous_year = current_year
-            
-            top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
-            week_display = f"Week {previous_week}, {previous_year}"
-        else:
-            week_display = f"Week {current_week}, {current_year}"
-        
-        st.markdown(f"**📅 {week_display}**")
+        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
         
         if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
@@ -352,7 +339,7 @@ if not day_df.empty and not csat_df.empty:
                     unsafe_allow_html=True
                 )
         else:
-            st.warning("No top performers data available")
+            st.warning("No top performers data available for this week")
 
 # === DASHBOARD UI ===
 st.title("📊 KPI Performance Dashboard")
