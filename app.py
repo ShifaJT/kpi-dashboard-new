@@ -93,11 +93,15 @@ def format_percentage(val):
 
 # === NEW FUNCTION FOR TOP PERFORMERS ===
 def calculate_weighted_score(row):
-    """Calculate weighted score with specified weightages"""
+    """Calculate weighted score with specified weightages, excluding Auto On < 07:50"""
     try:
         # Convert time metrics to seconds
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
+        
+        # EXCLUDE employees with Auto On less than 07:50 (470 seconds)
+        if auto_on < 470:  # 7 minutes 50 seconds = 470 seconds
+            return 0  # This will effectively exclude them from top performers
         
         # Convert percentages
         csat_res = clean_percentage_value(row.get('CSAT Resolution', 0))
@@ -123,7 +127,7 @@ def calculate_weighted_score(row):
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week, year=None):
-    """Identify top performers for a given week"""
+    """Identify top performers for a given week, excluding Auto On < 07:50"""
     try:
         # If year is provided, filter by both week and year
         if year:
@@ -161,8 +165,11 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
+        # Filter out employees with zero score (Auto On < 07:50)
+        eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
+        
         # Get top 5 and format
-        top_performers = weekly_metrics.sort_values('_weighted_score', ascending=False).head(5)
+        top_performers = eligible_performers.sort_values('_weighted_score', ascending=False).head(5)
         
         # Convert times to readable format
         def format_time(seconds):
@@ -181,6 +188,11 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
                 )
             elif col == 'Quality Score':
                 top_performers[col] = 'N/A'
+        
+        # Add debug info in sidebar if needed
+        excluded_count = len(weekly_metrics) - len(eligible_performers)
+        if excluded_count > 0:
+            st.sidebar.info(f"ℹ️ {excluded_count} employee(s) excluded due to Auto On < 07:50")
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
                               'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
