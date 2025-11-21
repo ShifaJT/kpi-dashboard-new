@@ -91,16 +91,55 @@ def format_percentage(val):
         return 'N/A'
     return f"{float(val):.1f}%"
 
-# === NEW FUNCTION FOR TOP PERFORMERS ===
+# === IMPROVED TIME CONVERSION FUNCTION ===
+def safe_convert_time(time_val):
+    """Convert various time formats to seconds with better handling"""
+    if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00', 'N/A']:
+        return 0.0
+    
+    try:
+        # If it's already a number, return it
+        if isinstance(time_val, (int, float)):
+            return float(time_val)
+        
+        time_str = str(time_val).strip()
+        
+        # Handle HH:MM:SS format (like "7:11:02")
+        if ':' in time_str:
+            parts = time_str.split(':')
+            
+            # Remove any empty parts
+            parts = [part for part in parts if part.strip()]
+            
+            if len(parts) == 3:  # HH:MM:SS
+                hours, minutes, seconds = map(float, parts)
+                return hours * 3600 + minutes * 60 + seconds
+            elif len(parts) == 2:  # HH:MM
+                hours, minutes = map(float, parts)
+                return hours * 3600 + minutes * 60
+            elif len(parts) == 1:  # Just a number
+                return float(parts[0]) * 3600  # Assume hours
+        
+        # If all else fails, try direct conversion
+        return float(time_str)
+        
+    except Exception as e:
+        st.warning(f"Could not convert time value: '{time_val}'. Error: {str(e)}")
+        return 0.0
+
+# === UPDATED FUNCTION FOR TOP PERFORMERS WITH AUTO ON THRESHOLD ===
 def calculate_weighted_score(row):
-    """Calculate weighted score with specified weightages, excluding Auto On < 07:50"""
+    """Calculate weighted score with specified weightages, excluding Auto On < 07:50:00"""
     try:
         # Convert time metrics to seconds
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
-        # EXCLUDE employees with Auto On less than 07:50 (470 seconds)
-        if auto_on < 470:  # 7 minutes 50 seconds = 470 seconds
+        # DEBUG: Show what we're getting for Auto On
+        auto_on_threshold = 7 * 3600 + 50 * 60  # 7 hours 50 minutes in seconds = 28200 seconds
+        
+        # EXCLUDE employees with Auto On less than 07:50:00 (7 hours 50 minutes = 28200 seconds)
+        if auto_on < auto_on_threshold:
             return 0  # This will effectively exclude them from top performers
         
         # Convert percentages
@@ -127,7 +166,7 @@ def calculate_weighted_score(row):
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week, year=None):
-    """Identify top performers for a given week, excluding Auto On < 07:50"""
+    """Identify top performers for a given week, excluding Auto On < 07:50:00"""
     try:
         # If year is provided, filter by both week and year
         if year:
@@ -162,10 +201,20 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             how='left'
         )
         
+        # Add debug information
+        st.sidebar.info(f"📊 Total employees for week {week}: {len(weekly_metrics)}")
+        
+        # Show Auto On statistics
+        if 'Auto On_sec' in weekly_metrics.columns:
+            avg_auto_on = weekly_metrics['Auto On_sec'].mean()
+            above_threshold = len(weekly_metrics[weekly_metrics['Auto On_sec'] >= 28200])
+            st.sidebar.info(f"⏱️ Avg Auto On: {str(timedelta(seconds=int(avg_auto_on)))}")
+            st.sidebar.info(f"✅ Employees above 07:50:00: {above_threshold}")
+        
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
-        # Filter out employees with zero score (Auto On < 07:50)
+        # Filter out employees with zero score (Auto On < 07:50:00)
         eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
         
         # Get top 5 and format
@@ -174,7 +223,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Convert times to readable format
         def format_time(seconds):
             if pd.isna(seconds) or seconds == 0:
-                return "00:00"
+                return "00:00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
@@ -189,10 +238,12 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             elif col == 'Quality Score':
                 top_performers[col] = 'N/A'
         
-        # Add debug info in sidebar if needed
+        # Add debug info in sidebar
         excluded_count = len(weekly_metrics) - len(eligible_performers)
         if excluded_count > 0:
-            st.sidebar.info(f"ℹ️ {excluded_count} employee(s) excluded due to Auto On < 07:50")
+            st.sidebar.warning(f"❌ {excluded_count} employee(s) excluded due to Auto On < 07:50:00")
+        
+        st.sidebar.success(f"🏆 Top performers found: {len(top_performers)}")
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
                               'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
@@ -265,23 +316,6 @@ day_df = load_sheet(SHEET_DAY)
 csat_df = load_sheet(SHEET_CSAT)
 
 # === DATA PROCESSING ===
-def safe_convert_time(time_val):
-    if pd.isna(time_val) or str(time_val).strip() in ['', '0', '00:00', '00:00:00']:
-        return 0.0
-    try:
-        if isinstance(time_val, (int, float)):
-            return float(time_val)
-        time_str = str(time_val).strip()
-        if ':' in time_str:
-            parts = list(map(float, time_str.split(':')))
-            if len(parts) == 3:
-                return parts[0]*3600 + parts[1]*60 + parts[2]
-            elif len(parts) == 2:
-                return parts[0]*60 + parts[1]
-        return float(time_str)
-    except:
-        return 0.0
-
 if not day_df.empty:
     # Convert Date column to datetime, handling errors
     day_df['Date'] = pd.to_datetime(day_df['Date'], errors='coerce')
@@ -536,8 +570,6 @@ elif time_frame == "Week":
             
             selected_week = st.selectbox("📆 Select Week", all_weeks)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
-            
-            # ... rest of your week view code remains the same ...
             
             if emp_id and selected_week:
                 try:
