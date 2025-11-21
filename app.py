@@ -349,19 +349,12 @@ if not day_df.empty and not csat_df.empty:
     current_week = current_date.isocalendar()[1]
     current_year = current_date.year
     
-    # Handle year transition for previous week
-    if current_week == 1:
-        previous_week = 52
-        previous_year = current_year - 1
-    else:
-        previous_week = current_week - 1
-        previous_year = current_year
-    
+    # Use current week instead of previous week for testing
     with st.sidebar:
-        st.header("🏆 Previous Week Top Performers")
-        st.markdown(f"**📅 Week {previous_week}, {previous_year}**")
+        st.header("🏆 Current Week Top Performers")
+        st.markdown(f"**📅 Week {current_week}, {current_year}**")
         
-        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
+        top_performers = get_weekly_top_performers(day_df, csat_df, current_week, current_year)
         
         if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
