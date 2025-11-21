@@ -91,13 +91,17 @@ def format_percentage(val):
         return 'N/A'
     return f"{float(val):.1f}%"
 
-# === NEW FUNCTION FOR TOP PERFORMERS ===
+# === UPDATED FUNCTION FOR TOP PERFORMERS WITH AUTO ON THRESHOLD ===
 def calculate_weighted_score(row):
-    """Calculate weighted score with specified weightages"""
+    """Calculate weighted score with specified weightages, excluding Auto On < 07:50"""
     try:
         # Convert time metrics to seconds
         wrap = safe_convert_time(row.get('Wrap', 0))
         auto_on = safe_convert_time(row.get('Auto On', 0))
+        
+        # EXCLUDE employees with Auto On less than 07:50 (7 hours 50 minutes = 28200 seconds)
+        if auto_on < 28200:  # 7 hours 50 minutes in seconds
+            return 0  # This will effectively exclude them from top performers
         
         # Convert percentages
         csat_res = clean_percentage_value(row.get('CSAT Resolution', 0))
@@ -161,8 +165,11 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
+        # Filter out employees with zero score (Auto On < 07:50)
+        eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
+        
         # Get top 5 and format
-        top_performers = weekly_metrics.sort_values('_weighted_score', ascending=False).head(5)
+        top_performers = eligible_performers.sort_values('_weighted_score', ascending=False).head(5)
         
         # Convert times to readable format
         def format_time(seconds):
@@ -524,8 +531,6 @@ elif time_frame == "Week":
             
             selected_week = st.selectbox("📆 Select Week", all_weeks)
             emp_id = st.text_input("🆔 Enter Employee ID", key="week_emp_id")
-            
-            # ... rest of your week view code remains the same ...
             
             if emp_id and selected_week:
                 try:
