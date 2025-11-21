@@ -129,6 +129,12 @@ def calculate_weighted_score(row):
 def get_weekly_top_performers(day_df, csat_df, week, year=None):
     """Identify top performers for a given week"""
     try:
+        # Debug: Show available weeks in data
+        available_weeks_day = day_df['Week'].unique()
+        available_weeks_csat = csat_df['Week'].unique()
+        st.sidebar.info(f"📅 Available weeks in Day data: {sorted(available_weeks_day)}")
+        st.sidebar.info(f"📅 Available weeks in CSAT data: {sorted(available_weeks_csat)}")
+        
         # If year is provided, filter by both week and year
         if year:
             week_filter = (day_df['Week'] == str(week)) & (day_df['Year'] == str(year))
@@ -141,8 +147,11 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             week_day_data = day_df[day_df['Week'] == str(week)].copy()
             week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
         
+        st.sidebar.info(f"🔍 Day data entries for week {week}: {len(week_day_data)}")
+        st.sidebar.info(f"🔍 CSAT data entries for week {week}: {len(week_csat_data)}")
+        
         if week_day_data.empty or week_csat_data.empty:
-            st.sidebar.warning(f"No data found for week {week}")
+            st.sidebar.warning(f"❌ No data found for week {week}")
             return pd.DataFrame()
         
         # Group by employee and calculate averages
@@ -172,7 +181,10 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             st.sidebar.info(f"✅ Employees with Auto On ≥ 07:50: {len(auto_on_above_threshold)}")
             
             if not auto_on_above_threshold.empty:
-                st.sidebar.info(f"🏆 Sample Auto On: {auto_on_above_threshold['Auto On_sec'].iloc[0]} seconds")
+                # Show actual Auto On values for debugging
+                for i, row in auto_on_above_threshold.head(3).iterrows():
+                    auto_on_formatted = str(timedelta(seconds=int(row['Auto On_sec']))).split('.')[0]
+                    st.sidebar.info(f"🏆 Employee {row['NAME']}: Auto On = {auto_on_formatted}")
         
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
@@ -183,7 +195,12 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         st.sidebar.info(f"🎯 Eligible performers after Auto On filter: {len(eligible_performers)}")
         
         if eligible_performers.empty:
-            st.sidebar.warning("No eligible performers after Auto On filter")
+            # Show why they were filtered out
+            if len(weekly_metrics) > 0:
+                sample_employee = weekly_metrics.iloc[0]
+                st.sidebar.warning(f"❌ Sample employee {sample_employee['NAME']}: "
+                                 f"Auto On = {sample_employee['Auto On_sec']} seconds, "
+                                 f"Weighted Score = {sample_employee['_weighted_score']}")
             return pd.DataFrame()
         
         # Get top 5 and format
