@@ -91,7 +91,7 @@ def format_percentage(val):
         return 'N/A'
     return f"{float(val):.1f}%"
 
-# === UPDATED FUNCTION FOR TOP PERFORMERS WITH AUTO ON THRESHOLD ===
+# === FUNCTION FOR TOP PERFORMERS WITH AUTO ON THRESHOLD ===
 def calculate_weighted_score(row):
     """Calculate weighted score with specified weightages, excluding Auto On < 07:50"""
     try:
@@ -100,8 +100,8 @@ def calculate_weighted_score(row):
         auto_on = safe_convert_time(row.get('Auto On', 0))
         
         # EXCLUDE employees with Auto On less than 07:50 (7 hours 50 minutes = 28200 seconds)
-        if auto_on < 28200:  # 7 hours 50 minutes in seconds
-            return 0  # This will effectively exclude them from top performers
+        if auto_on < 28200:
+            return 0
         
         # Convert percentages
         csat_res = clean_percentage_value(row.get('CSAT Resolution', 0))
@@ -123,18 +123,11 @@ def calculate_weighted_score(row):
         
         return round(weighted_score, 2)
     except Exception as e:
-        st.error(f"Error calculating score: {str(e)}")
         return 0
 
 def get_weekly_top_performers(day_df, csat_df, week, year=None):
     """Identify top performers for a given week"""
     try:
-        # Debug: Show available weeks in data
-        available_weeks_day = day_df['Week'].unique()
-        available_weeks_csat = csat_df['Week'].unique()
-        st.sidebar.info(f"📅 Available weeks in Day data: {sorted(available_weeks_day)}")
-        st.sidebar.info(f"📅 Available weeks in CSAT data: {sorted(available_weeks_csat)}")
-        
         # If year is provided, filter by both week and year
         if year:
             week_filter = (day_df['Week'] == str(week)) & (day_df['Year'] == str(year))
@@ -147,11 +140,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             week_day_data = day_df[day_df['Week'] == str(week)].copy()
             week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
         
-        st.sidebar.info(f"🔍 Day data entries for week {week}: {len(week_day_data)}")
-        st.sidebar.info(f"🔍 CSAT data entries for week {week}: {len(week_csat_data)}")
-        
         if week_day_data.empty or week_csat_data.empty:
-            st.sidebar.warning(f"❌ No data found for week {week}")
             return pd.DataFrame()
         
         # Group by employee and calculate averages
@@ -172,36 +161,11 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             how='left'
         )
         
-        # Add debug information to understand the data
-        st.sidebar.info(f"📊 Total employees for week {week}: {len(weekly_metrics)}")
-        
-        # Check Auto On values
-        if 'Auto On_sec' in weekly_metrics.columns:
-            auto_on_above_threshold = weekly_metrics[weekly_metrics['Auto On_sec'] >= 28200]
-            st.sidebar.info(f"✅ Employees with Auto On ≥ 07:50: {len(auto_on_above_threshold)}")
-            
-            if not auto_on_above_threshold.empty:
-                # Show actual Auto On values for debugging
-                for i, row in auto_on_above_threshold.head(3).iterrows():
-                    auto_on_formatted = str(timedelta(seconds=int(row['Auto On_sec']))).split('.')[0]
-                    st.sidebar.info(f"🏆 Employee {row['NAME']}: Auto On = {auto_on_formatted}")
-        
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
         # Filter out employees with zero score (Auto On < 07:50)
         eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
-        
-        st.sidebar.info(f"🎯 Eligible performers after Auto On filter: {len(eligible_performers)}")
-        
-        if eligible_performers.empty:
-            # Show why they were filtered out
-            if len(weekly_metrics) > 0:
-                sample_employee = weekly_metrics.iloc[0]
-                st.sidebar.warning(f"❌ Sample employee {sample_employee['NAME']}: "
-                                 f"Auto On = {sample_employee['Auto On_sec']} seconds, "
-                                 f"Weighted Score = {sample_employee['_weighted_score']}")
-            return pd.DataFrame()
         
         # Get top 5 and format
         top_performers = eligible_performers.sort_values('_weighted_score', ascending=False).head(5)
@@ -209,7 +173,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Convert times to readable format
         def format_time(seconds):
             if pd.isna(seconds) or seconds == 0:
-                return "00:00:00"
+                return "00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
@@ -224,12 +188,9 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             elif col == 'Quality Score':
                 top_performers[col] = 'N/A'
         
-        st.sidebar.success(f"🏆 Top performers found: {len(top_performers)}")
-        
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
                               'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
     except Exception as e:
-        st.error(f"Error identifying top performers: {str(e)}")
         return pd.DataFrame()
 
 # === CONFIGURATION ===
@@ -343,18 +304,25 @@ if not csat_df.empty:
         # Default to current year if no date column
         csat_df['Year'] = str(datetime.now().year)
 
-# === DISPLAY WEEKLY TOP PERFORMERS ===
+# === DISPLAY WEEKLY TOP PERFORMERS IN SIDEBAR ===
 if not day_df.empty and not csat_df.empty:
     current_date = datetime.now()
     current_week = current_date.isocalendar()[1]
     current_year = current_date.year
     
-    # Use current week instead of previous week for testing
+    # Handle year transition for previous week
+    if current_week == 1:
+        previous_week = 52
+        previous_year = current_year - 1
+    else:
+        previous_week = current_week - 1
+        previous_year = current_year
+    
     with st.sidebar:
-        st.header("🏆 Current Week Top Performers")
-        st.markdown(f"**📅 Week {current_week}, {current_year}**")
+        st.header("🏆 Previous Week Top Performers")
+        st.markdown(f"**📅 Week {previous_week}, {previous_year}**")
         
-        top_performers = get_weekly_top_performers(day_df, csat_df, current_week, current_year)
+        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
         
         if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
