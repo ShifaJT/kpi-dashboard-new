@@ -142,6 +142,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             week_csat_data = csat_df[csat_df['Week'] == str(week)].copy()
         
         if week_day_data.empty or week_csat_data.empty:
+            st.sidebar.warning(f"No data found for week {week}")
             return pd.DataFrame()
         
         # Group by employee and calculate averages
@@ -162,11 +163,28 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
             how='left'
         )
         
+        # Add debug information to understand the data
+        st.sidebar.info(f"📊 Total employees for week {week}: {len(weekly_metrics)}")
+        
+        # Check Auto On values
+        if 'Auto On_sec' in weekly_metrics.columns:
+            auto_on_above_threshold = weekly_metrics[weekly_metrics['Auto On_sec'] >= 28200]
+            st.sidebar.info(f"✅ Employees with Auto On ≥ 07:50: {len(auto_on_above_threshold)}")
+            
+            if not auto_on_above_threshold.empty:
+                st.sidebar.info(f"🏆 Sample Auto On: {auto_on_above_threshold['Auto On_sec'].iloc[0]} seconds")
+        
         # Calculate scores for ranking (without displaying the score)
         weekly_metrics['_weighted_score'] = weekly_metrics.apply(calculate_weighted_score, axis=1)
         
         # Filter out employees with zero score (Auto On < 07:50)
         eligible_performers = weekly_metrics[weekly_metrics['_weighted_score'] > 0]
+        
+        st.sidebar.info(f"🎯 Eligible performers after Auto On filter: {len(eligible_performers)}")
+        
+        if eligible_performers.empty:
+            st.sidebar.warning("No eligible performers after Auto On filter")
+            return pd.DataFrame()
         
         # Get top 5 and format
         top_performers = eligible_performers.sort_values('_weighted_score', ascending=False).head(5)
@@ -174,7 +192,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Convert times to readable format
         def format_time(seconds):
             if pd.isna(seconds) or seconds == 0:
-                return "00:00"
+                return "00:00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
@@ -188,6 +206,8 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
                 )
             elif col == 'Quality Score':
                 top_performers[col] = 'N/A'
+        
+        st.sidebar.success(f"🏆 Top performers found: {len(top_performers)}")
         
         return top_performers[['EMP ID', 'NAME', 'Wrap', 'Auto On', 
                               'CSAT Resolution', 'CSAT Behaviour', 'Quality Score']]
