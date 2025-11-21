@@ -173,7 +173,7 @@ def get_weekly_top_performers(day_df, csat_df, week, year=None):
         # Convert times to readable format
         def format_time(seconds):
             if pd.isna(seconds) or seconds == 0:
-                return "00:00"
+                return "00:00:00"
             return str(timedelta(seconds=int(seconds))).split('.')[0]
         
         top_performers['Wrap'] = top_performers['Wrap_sec'].apply(format_time)
@@ -310,19 +310,27 @@ if not day_df.empty and not csat_df.empty:
     current_week = current_date.isocalendar()[1]
     current_year = current_date.year
     
-    # Handle year transition for previous week
-    if current_week == 1:
-        previous_week = 52
-        previous_year = current_year - 1
-    else:
-        previous_week = current_week - 1
-        previous_year = current_year
-    
     with st.sidebar:
-        st.header("🏆 Previous Week Top Performers")
-        st.markdown(f"**📅 Week {previous_week}, {previous_year}**")
+        st.header("🏆 Weekly Top Performers")
         
-        top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
+        # Try current week first
+        top_performers = get_weekly_top_performers(day_df, csat_df, current_week, current_year)
+        
+        if top_performers.empty:
+            # If current week has no data, try previous week
+            if current_week == 1:
+                previous_week = 52
+                previous_year = current_year - 1
+            else:
+                previous_week = current_week - 1
+                previous_year = current_year
+            
+            top_performers = get_weekly_top_performers(day_df, csat_df, previous_week, previous_year)
+            week_display = f"Week {previous_week}, {previous_year}"
+        else:
+            week_display = f"Week {current_week}, {current_year}"
+        
+        st.markdown(f"**📅 {week_display}**")
         
         if not top_performers.empty:
             for i, (_, row) in enumerate(top_performers.iterrows(), 1):
@@ -344,7 +352,7 @@ if not day_df.empty and not csat_df.empty:
                     unsafe_allow_html=True
                 )
         else:
-            st.warning("No top performers data available for this week")
+            st.warning("No top performers data available")
 
 # === DASHBOARD UI ===
 st.title("📊 KPI Performance Dashboard")
