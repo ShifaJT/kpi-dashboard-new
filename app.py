@@ -297,7 +297,7 @@ if not csat_df.empty:
         csat_df['Year'] = csat_df['Date'].dt.year.astype(str)
     else:
         # Default to current year if no date column
-        csat_df['Year'] = str(datetime.now().year)
+        csat_df['Year'] = csat_df['Year'].astype(str)
 
 # === DISPLAY WEEKLY TOP PERFORMERS ===
 if not day_df.empty and not csat_df.empty:
@@ -343,7 +343,33 @@ if not day_df.empty and not csat_df.empty:
 
 # === DASHBOARD UI ===
 st.title("📊 KPI Performance Dashboard")
-time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month"], horizontal=True)
+time_frame = st.radio("⏳ Select Timeframe:", ["Day", "Week", "Month", "Year"], horizontal=True)
+
+# === YEAR FILTER ===
+available_years = []
+
+if 'Year' in month_df.columns:
+    available_years += month_df['Year'].dropna().astype(str).unique().tolist()
+
+if 'Year' in day_df.columns:
+    available_years += day_df['Year'].dropna().astype(str).unique().tolist()
+
+if 'Year' in csat_df.columns:
+    available_years += csat_df['Year'].dropna().astype(str).unique().tolist()
+
+available_years = sorted(list(set(available_years)), reverse=True)
+
+selected_year = st.selectbox("📅 Select Year", available_years)
+
+# === APPLY YEAR FILTER ===
+if not month_df.empty and 'Year' in month_df.columns:
+    month_df = month_df[month_df['Year'].astype(str) == str(selected_year)]
+
+if not day_df.empty and 'Year' in day_df.columns:
+    day_df = day_df[day_df['Year'].astype(str) == str(selected_year)]
+
+if not csat_df.empty and 'Year' in csat_df.columns:
+    csat_df = csat_df[csat_df['Year'].astype(str) == str(selected_year)]
 
 # === MONTH VIEW ===
 if time_frame == "Month":
